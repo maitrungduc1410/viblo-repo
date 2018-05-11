@@ -36,28 +36,4 @@ const app = new Vue({
             })
         }
     }
-    // data: {
-    // 	messages: []
-    // },
-    // methods: {
-    // 	sendMessage(message) {
-    // 		this.messages.push(message)
-
-    // 		axios.post('/messages', message)
-    // 		.then(response => {
-
-    // 		})
-    // 	}
-    // },
-    // created() {
-    // 	axios.get('/messages')
-    // 	.then(response => {
-    // 		this.messages = response.data
-    // 	})
-
-    //     Echo.join('chatroom')
-    //         .listen('.asChatDemo', (e) => {
-    //             console.log("heheheheheeh")
-    //         })
-    // }
 });
