@@ -19,7 +19,14 @@ Broadcast::channel('App.User.{id}', function ($user, $id) {
 //     return $user; // here will return the guest user object
 // });
 Broadcast::channel('chatroom', function ($user) {
-	return true;
+	return false;
     // return $user->id === Order::findOrNew($orderId)->user_id;
 });
+
+// Broadcast::channel('chatroom', function ($user) {
+// 	return [
+// 		'id' => $user->id,
+// 		'name' => $user->name
+// 	];
+// });
 

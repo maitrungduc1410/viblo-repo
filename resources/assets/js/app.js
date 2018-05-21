@@ -9,8 +9,15 @@ require('./bootstrap');
 
 window.Vue = require('vue');
 import VueContentPlaceholders from 'vue-content-placeholders'
+const Push = require('push.js')
 
 Vue.use(VueContentPlaceholders)
+import VueEcho from 'vue-echo';
+  
+Vue.use(VueEcho, {
+    broadcaster: 'socket.io',
+    host: { path: window.location.hostname + ':6001/socket.io' },
+})
 /**
  * Next, we will create a fresh Vue application instance and attach it to
  * the page. Then, you may begin adding components to this application
@@ -18,12 +25,14 @@ Vue.use(VueContentPlaceholders)
  */
 
 Vue.component('example', require('./components/Example.vue'));
+Vue.component('my-component', require('./components/MyComponent.vue'));
 Vue.component('chat-layout', require('./components/ChatLayout.vue'));
 
 const app = new Vue({
     el: '#app',
     data: {
-        currentUserLogin: {}
+        currentUserLogin: {},
+        push: Push
     },
     created() {
         this.getCurrentUserLogin()

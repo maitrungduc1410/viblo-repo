@@ -33,13 +33,20 @@
 			}
 		},
 		created() {
+			this.$root.push.create("Hello world!", {
+			    body: "How's it hangin'?",
+			    icon: 'http://icons.iconarchive.com/icons/alecive/flatwoken/512/Apps-Notifications-icon.png',
+			    timeout: 10000,
+			    onClick: function () {
+			        window.focus();
+			        this.close();
+			    }
+			});
 			this.loadMessage()
-			Echo.channel('chatroom')
-			    .listen('MessagePosted', (data) => {
-			    	let message = data.message
-			    	message.user = data.user
-			        this.list_messages.push(message)
-			    })
+			Echo.private('chatroom')
+			.listen('MessagePosted', data => {
+				console.log(data)
+			})
 		},
 		methods: {
 			loadMessage() {
