@@ -27,6 +27,7 @@ Vue.use(VueEcho, {
 Vue.component('example', require('./components/Example.vue'));
 Vue.component('my-component', require('./components/MyComponent.vue'));
 Vue.component('chat-layout', require('./components/ChatLayout.vue'));
+Vue.component('user-dashboard', require('./components/UserDashboard.vue'));
 
 const app = new Vue({
     el: '#app',
