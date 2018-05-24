@@ -1,5 +1,5 @@
-# chatapp-laravelecho-socketio
-Realtime Chat App using Laravel, Laravel Echo, Socket.io, Redis, VueJS
+# viblo-repo
+This repo is used for examples in my blog
 
 How to run:
 * clone the app
