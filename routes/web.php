@@ -22,8 +22,7 @@ Route::get('/chat', function() {
 
 Route::get('/messages', function() {
 	return App\Message::with('user')->get();
-	
-})->middleware('auth');
+});
 
 Route::post('/messages', function () {
     $user = Auth::user();
@@ -48,3 +47,5 @@ Route::get('/home', 'HomeController@index')->name('home');
 Route::get('grape', function() {
 	return view('grape');
 });
+
+Route::resource('products', 'ProductController');
