@@ -1,5 +1,6 @@
 <template>
 	<div class="api-calling">
+		<vue-markdown :emoji="true">this is the default slot `hey` :)</vue-markdown>
 		<div class="error" v-if="errors.length">
 			<span v-for="err in errors">
 				{{ err }}
@@ -65,7 +66,11 @@
 
 <script>
 	import moment from 'moment'
+	import VueMarkdown from 'vue-markdown'
 	export default {
+		components: {
+			VueMarkdown
+		},
 		data() {
 			return {
 				product: {

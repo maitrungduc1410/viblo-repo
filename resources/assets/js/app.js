@@ -11,6 +11,7 @@ window.Vue = require('vue');
 
 import VueResource from 'vue-resource'
 Vue.use(VueResource)
+import router from './router/routes'
 
 /**
  * Next, we will create a fresh Vue application instance and attach it to
@@ -27,7 +28,9 @@ Vue.component('binding-html', require('./components/BindingHTML.vue'));
 Vue.component('event-handling', require('./components/EventHandling.vue'));
 Vue.component('parent', require('./components/Parent.vue'));
 Vue.component('api-calling', require('./components/ApiCalling.vue'));
+Vue.component('blog', require('./components/Blog.vue'));
 
 const app = new Vue({
-    el: '#app'
+    el: '#app',
+    router
 });

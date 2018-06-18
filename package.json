@@ -27,6 +27,8 @@
         "socket.io-client": "^2.1.0",
         "vue-content-placeholders": "^0.2.1",
         "vue-echo": "^1.0.1",
-        "vue-resource": "^1.5.1"
+        "vue-markdown": "^2.2.4",
+        "vue-resource": "^1.5.1",
+        "vue-router": "^3.0.1"
     }
 }
