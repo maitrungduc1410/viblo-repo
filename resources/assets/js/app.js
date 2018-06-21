@@ -29,8 +29,8 @@ Vue.component('event-handling', require('./components/EventHandling.vue'));
 Vue.component('parent', require('./components/Parent.vue'));
 Vue.component('api-calling', require('./components/ApiCalling.vue'));
 Vue.component('blog', require('./components/Blog.vue'));
+Vue.component('User', require('./components/User.vue'));
 
 const app = new Vue({
     el: '#app',
-    router
 });

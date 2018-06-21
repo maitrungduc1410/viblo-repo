@@ -60,7 +60,7 @@
 /******/ 	__webpack_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 139);
+/******/ 	return __webpack_require__(__webpack_require__.s = 191);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -1902,7 +1902,7 @@
             try {
                 oldLocale = globalLocale._abbr;
                 var aliasedRequire = require;
-                __webpack_require__(239)("./" + name);
+                __webpack_require__(296)("./" + name);
                 getSetGlobalLocale(oldLocale);
             } catch (e) {}
         }
@@ -4574,10 +4574,374 @@
 
 })));
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(6)(module)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)(module)))
 
 /***/ }),
 /* 1 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// Utilities
+//
+
+
+
+function _class(obj) { return Object.prototype.toString.call(obj); }
+
+function isString(obj) { return _class(obj) === '[object String]'; }
+
+var _hasOwnProperty = Object.prototype.hasOwnProperty;
+
+function has(object, key) {
+  return _hasOwnProperty.call(object, key);
+}
+
+// Merge objects
+//
+function assign(obj /*from1, from2, from3, ...*/) {
+  var sources = Array.prototype.slice.call(arguments, 1);
+
+  sources.forEach(function (source) {
+    if (!source) { return; }
+
+    if (typeof source !== 'object') {
+      throw new TypeError(source + 'must be object');
+    }
+
+    Object.keys(source).forEach(function (key) {
+      obj[key] = source[key];
+    });
+  });
+
+  return obj;
+}
+
+// Remove element from array and put another array at those position.
+// Useful for some operations with tokens
+function arrayReplaceAt(src, pos, newElements) {
+  return [].concat(src.slice(0, pos), newElements, src.slice(pos + 1));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+function isValidEntityCode(c) {
+  /*eslint no-bitwise:0*/
+  // broken sequence
+  if (c >= 0xD800 && c <= 0xDFFF) { return false; }
+  // never used
+  if (c >= 0xFDD0 && c <= 0xFDEF) { return false; }
+  if ((c & 0xFFFF) === 0xFFFF || (c & 0xFFFF) === 0xFFFE) { return false; }
+  // control codes
+  if (c >= 0x00 && c <= 0x08) { return false; }
+  if (c === 0x0B) { return false; }
+  if (c >= 0x0E && c <= 0x1F) { return false; }
+  if (c >= 0x7F && c <= 0x9F) { return false; }
+  // out of range
+  if (c > 0x10FFFF) { return false; }
+  return true;
+}
+
+function fromCodePoint(c) {
+  /*eslint no-bitwise:0*/
+  if (c > 0xffff) {
+    c -= 0x10000;
+    var surrogate1 = 0xd800 + (c >> 10),
+        surrogate2 = 0xdc00 + (c & 0x3ff);
+
+    return String.fromCharCode(surrogate1, surrogate2);
+  }
+  return String.fromCharCode(c);
+}
+
+
+var UNESCAPE_MD_RE  = /\\([!"#$%&'()*+,\-.\/:;<=>?@[\\\]^_`{|}~])/g;
+var ENTITY_RE       = /&([a-z#][a-z0-9]{1,31});/gi;
+var UNESCAPE_ALL_RE = new RegExp(UNESCAPE_MD_RE.source + '|' + ENTITY_RE.source, 'gi');
+
+var DIGITAL_ENTITY_TEST_RE = /^#((?:x[a-f0-9]{1,8}|[0-9]{1,8}))/i;
+
+var entities = __webpack_require__(180);
+
+function replaceEntityPattern(match, name) {
+  var code = 0;
+
+  if (has(entities, name)) {
+    return entities[name];
+  }
+
+  if (name.charCodeAt(0) === 0x23/* # */ && DIGITAL_ENTITY_TEST_RE.test(name)) {
+    code = name[1].toLowerCase() === 'x' ?
+      parseInt(name.slice(2), 16)
+    :
+      parseInt(name.slice(1), 10);
+    if (isValidEntityCode(code)) {
+      return fromCodePoint(code);
+    }
+  }
+
+  return match;
+}
+
+/*function replaceEntities(str) {
+  if (str.indexOf('&') < 0) { return str; }
+
+  return str.replace(ENTITY_RE, replaceEntityPattern);
+}*/
+
+function unescapeMd(str) {
+  if (str.indexOf('\\') < 0) { return str; }
+  return str.replace(UNESCAPE_MD_RE, '$1');
+}
+
+function unescapeAll(str) {
+  if (str.indexOf('\\') < 0 && str.indexOf('&') < 0) { return str; }
+
+  return str.replace(UNESCAPE_ALL_RE, function (match, escaped, entity) {
+    if (escaped) { return escaped; }
+    return replaceEntityPattern(match, entity);
+  });
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+var HTML_ESCAPE_TEST_RE = /[&<>"]/;
+var HTML_ESCAPE_REPLACE_RE = /[&<>"]/g;
+var HTML_REPLACEMENTS = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;'
+};
+
+function replaceUnsafeChar(ch) {
+  return HTML_REPLACEMENTS[ch];
+}
+
+function escapeHtml(str) {
+  if (HTML_ESCAPE_TEST_RE.test(str)) {
+    return str.replace(HTML_ESCAPE_REPLACE_RE, replaceUnsafeChar);
+  }
+  return str;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+var REGEXP_ESCAPE_RE = /[.?*+^$[\]\\(){}|-]/g;
+
+function escapeRE(str) {
+  return str.replace(REGEXP_ESCAPE_RE, '\\$&');
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+function isSpace(code) {
+  switch (code) {
+    case 0x09:
+    case 0x20:
+      return true;
+  }
+  return false;
+}
+
+// Zs (unicode class) || [\t\f\v\r\n]
+function isWhiteSpace(code) {
+  if (code >= 0x2000 && code <= 0x200A) { return true; }
+  switch (code) {
+    case 0x09: // \t
+    case 0x0A: // \n
+    case 0x0B: // \v
+    case 0x0C: // \f
+    case 0x0D: // \r
+    case 0x20:
+    case 0xA0:
+    case 0x1680:
+    case 0x202F:
+    case 0x205F:
+    case 0x3000:
+      return true;
+  }
+  return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/*eslint-disable max-len*/
+var UNICODE_PUNCT_RE = __webpack_require__(32);
+
+// Currently without astral characters support.
+function isPunctChar(ch) {
+  return UNICODE_PUNCT_RE.test(ch);
+}
+
+
+// Markdown ASCII punctuation characters.
+//
+// !, ", #, $, %, &, ', (, ), *, +, ,, -, ., /, :, ;, <, =, >, ?, @, [, \, ], ^, _, `, {, |, }, or ~
+// http://spec.commonmark.org/0.15/#ascii-punctuation-character
+//
+// Don't confuse with unicode punctuation !!! It lacks some chars in ascii range.
+//
+function isMdAsciiPunct(ch) {
+  switch (ch) {
+    case 0x21/* ! */:
+    case 0x22/* " */:
+    case 0x23/* # */:
+    case 0x24/* $ */:
+    case 0x25/* % */:
+    case 0x26/* & */:
+    case 0x27/* ' */:
+    case 0x28/* ( */:
+    case 0x29/* ) */:
+    case 0x2A/* * */:
+    case 0x2B/* + */:
+    case 0x2C/* , */:
+    case 0x2D/* - */:
+    case 0x2E/* . */:
+    case 0x2F/* / */:
+    case 0x3A/* : */:
+    case 0x3B/* ; */:
+    case 0x3C/* < */:
+    case 0x3D/* = */:
+    case 0x3E/* > */:
+    case 0x3F/* ? */:
+    case 0x40/* @ */:
+    case 0x5B/* [ */:
+    case 0x5C/* \ */:
+    case 0x5D/* ] */:
+    case 0x5E/* ^ */:
+    case 0x5F/* _ */:
+    case 0x60/* ` */:
+    case 0x7B/* { */:
+    case 0x7C/* | */:
+    case 0x7D/* } */:
+    case 0x7E/* ~ */:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Hepler to unify [reference labels].
+//
+function normalizeReference(str) {
+  // use .toUpperCase() instead of .toLowerCase()
+  // here to avoid a conflict with Object.prototype
+  // members (most notably, `__proto__`)
+  return str.trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Re-export libraries commonly used in both markdown-it and its plugins,
+// so plugins won't have to depend on them explicitly, which reduces their
+// bundled size (e.g. a browser build).
+//
+exports.lib                 = {};
+exports.lib.mdurl           = __webpack_require__(181);
+exports.lib.ucmicro         = __webpack_require__(335);
+
+exports.assign              = assign;
+exports.isString            = isString;
+exports.has                 = has;
+exports.unescapeMd          = unescapeMd;
+exports.unescapeAll         = unescapeAll;
+exports.isValidEntityCode   = isValidEntityCode;
+exports.fromCodePoint       = fromCodePoint;
+// exports.replaceEntities     = replaceEntities;
+exports.escapeHtml          = escapeHtml;
+exports.arrayReplaceAt      = arrayReplaceAt;
+exports.isSpace             = isSpace;
+exports.isWhiteSpace        = isWhiteSpace;
+exports.isMdAsciiPunct      = isMdAsciiPunct;
+exports.isPunctChar         = isPunctChar;
+exports.escapeRE            = escapeRE;
+exports.normalizeReference  = normalizeReference;
+
+
+/***/ }),
+/* 2 */
+/***/ (function(module, exports) {
+
+/*
+	MIT License http://www.opensource.org/licenses/mit-license.php
+	Author Tobias Koppers @sokra
+*/
+// css base code, injected by the css-loader
+module.exports = function(useSourceMap) {
+	var list = [];
+
+	// return the list of modules as css string
+	list.toString = function toString() {
+		return this.map(function (item) {
+			var content = cssWithMappingToString(item, useSourceMap);
+			if(item[2]) {
+				return "@media " + item[2] + "{" + content + "}";
+			} else {
+				return content;
+			}
+		}).join("");
+	};
+
+	// import a list of modules into the list
+	list.i = function(modules, mediaQuery) {
+		if(typeof modules === "string")
+			modules = [[null, modules, ""]];
+		var alreadyImportedModules = {};
+		for(var i = 0; i < this.length; i++) {
+			var id = this[i][0];
+			if(typeof id === "number")
+				alreadyImportedModules[id] = true;
+		}
+		for(i = 0; i < modules.length; i++) {
+			var item = modules[i];
+			// skip already imported module
+			// this implementation is not 100% perfect for weird media query combinations
+			//  when a module is imported multiple times with different media queries.
+			//  I hope this will never occur (Hey this way we have smaller bundles)
+			if(typeof item[0] !== "number" || !alreadyImportedModules[item[0]]) {
+				if(mediaQuery && !item[2]) {
+					item[2] = mediaQuery;
+				} else if(mediaQuery) {
+					item[2] = "(" + item[2] + ") and (" + mediaQuery + ")";
+				}
+				list.push(item);
+			}
+		}
+	};
+	return list;
+};
+
+function cssWithMappingToString(item, useSourceMap) {
+	var content = item[1] || '';
+	var cssMapping = item[3];
+	if (!cssMapping) {
+		return content;
+	}
+
+	if (useSourceMap && typeof btoa === 'function') {
+		var sourceMapping = toComment(cssMapping);
+		var sourceURLs = cssMapping.sources.map(function (source) {
+			return '/*# sourceURL=' + cssMapping.sourceRoot + source + ' */'
+		});
+
+		return [content].concat(sourceURLs).concat([sourceMapping]).join('\n');
+	}
+
+	return [content].join('\n');
+}
+
+// Adapted from convert-source-map (MIT)
+function toComment(sourceMap) {
+	// eslint-disable-next-line no-undef
+	var base64 = btoa(unescape(encodeURIComponent(JSON.stringify(sourceMap))));
+	var data = 'sourceMappingURL=data:application/json;charset=utf-8;base64,' + base64;
+
+	return '/*# ' + data + ' */';
+}
+
+
+/***/ }),
+/* 3 */
 /***/ (function(module, exports) {
 
 /* globals __VUE_SSR_CONTEXT__ */
@@ -4686,89 +5050,7 @@ module.exports = function normalizeComponent (
 
 
 /***/ }),
-/* 2 */
-/***/ (function(module, exports) {
-
-/*
-	MIT License http://www.opensource.org/licenses/mit-license.php
-	Author Tobias Koppers @sokra
-*/
-// css base code, injected by the css-loader
-module.exports = function(useSourceMap) {
-	var list = [];
-
-	// return the list of modules as css string
-	list.toString = function toString() {
-		return this.map(function (item) {
-			var content = cssWithMappingToString(item, useSourceMap);
-			if(item[2]) {
-				return "@media " + item[2] + "{" + content + "}";
-			} else {
-				return content;
-			}
-		}).join("");
-	};
-
-	// import a list of modules into the list
-	list.i = function(modules, mediaQuery) {
-		if(typeof modules === "string")
-			modules = [[null, modules, ""]];
-		var alreadyImportedModules = {};
-		for(var i = 0; i < this.length; i++) {
-			var id = this[i][0];
-			if(typeof id === "number")
-				alreadyImportedModules[id] = true;
-		}
-		for(i = 0; i < modules.length; i++) {
-			var item = modules[i];
-			// skip already imported module
-			// this implementation is not 100% perfect for weird media query combinations
-			//  when a module is imported multiple times with different media queries.
-			//  I hope this will never occur (Hey this way we have smaller bundles)
-			if(typeof item[0] !== "number" || !alreadyImportedModules[item[0]]) {
-				if(mediaQuery && !item[2]) {
-					item[2] = mediaQuery;
-				} else if(mediaQuery) {
-					item[2] = "(" + item[2] + ") and (" + mediaQuery + ")";
-				}
-				list.push(item);
-			}
-		}
-	};
-	return list;
-};
-
-function cssWithMappingToString(item, useSourceMap) {
-	var content = item[1] || '';
-	var cssMapping = item[3];
-	if (!cssMapping) {
-		return content;
-	}
-
-	if (useSourceMap && typeof btoa === 'function') {
-		var sourceMapping = toComment(cssMapping);
-		var sourceURLs = cssMapping.sources.map(function (source) {
-			return '/*# sourceURL=' + cssMapping.sourceRoot + source + ' */'
-		});
-
-		return [content].concat(sourceURLs).concat([sourceMapping]).join('\n');
-	}
-
-	return [content].join('\n');
-}
-
-// Adapted from convert-source-map (MIT)
-function toComment(sourceMap) {
-	// eslint-disable-next-line no-undef
-	var base64 = btoa(unescape(encodeURIComponent(JSON.stringify(sourceMap))));
-	var data = 'sourceMappingURL=data:application/json;charset=utf-8;base64,' + base64;
-
-	return '/*# ' + data + ' */';
-}
-
-
-/***/ }),
-/* 3 */
+/* 4 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /*
@@ -4787,7 +5069,7 @@ if (typeof DEBUG !== 'undefined' && DEBUG) {
   ) }
 }
 
-var listToStyles = __webpack_require__(176)
+var listToStyles = __webpack_require__(233)
 
 /*
 type StyleObject = {
@@ -4989,14 +5271,14 @@ function applyToTag (styleElement, obj) {
 
 
 /***/ }),
-/* 4 */
+/* 5 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var bind = __webpack_require__(8);
-var isBuffer = __webpack_require__(147);
+var bind = __webpack_require__(36);
+var isBuffer = __webpack_require__(199);
 
 /*global toString:true*/
 
@@ -5299,7 +5581,194 @@ module.exports = {
 
 
 /***/ }),
-/* 5 */
+/* 6 */
+/***/ (function(module, exports) {
+
+/**
+ * This file contains a list of utility functions which are useful in other
+ * files.
+ */
+
+/**
+ * Provide an `indexOf` function which works in IE8, but defers to native if
+ * possible.
+ */
+var nativeIndexOf = Array.prototype.indexOf;
+var indexOf = function(list, elem) {
+    if (list == null) {
+        return -1;
+    }
+    if (nativeIndexOf && list.indexOf === nativeIndexOf) {
+        return list.indexOf(elem);
+    }
+    var i = 0;
+    var l = list.length;
+    for (; i < l; i++) {
+        if (list[i] === elem) {
+            return i;
+        }
+    }
+    return -1;
+};
+
+/**
+ * Return whether an element is contained in a list
+ */
+var contains = function(list, elem) {
+    return indexOf(list, elem) !== -1;
+};
+
+/**
+ * Provide a default value if a setting is undefined
+ */
+var deflt = function(setting, defaultIfUndefined) {
+    return setting === undefined ? defaultIfUndefined : setting;
+};
+
+// hyphenate and escape adapted from Facebook's React under Apache 2 license
+
+var uppercase = /([A-Z])/g;
+var hyphenate = function(str) {
+    return str.replace(uppercase, "-$1").toLowerCase();
+};
+
+var ESCAPE_LOOKUP = {
+    "&": "&amp;",
+    ">": "&gt;",
+    "<": "&lt;",
+    "\"": "&quot;",
+    "'": "&#x27;",
+};
+
+var ESCAPE_REGEX = /[&><"']/g;
+
+function escaper(match) {
+    return ESCAPE_LOOKUP[match];
+}
+
+/**
+ * Escapes text to prevent scripting attacks.
+ *
+ * @param {*} text Text value to escape.
+ * @return {string} An escaped string.
+ */
+function escape(text) {
+    return ("" + text).replace(ESCAPE_REGEX, escaper);
+}
+
+/**
+ * A function to set the text content of a DOM element in all supported
+ * browsers. Note that we don't define this if there is no document.
+ */
+var setTextContent;
+if (typeof document !== "undefined") {
+    var testNode = document.createElement("span");
+    if ("textContent" in testNode) {
+        setTextContent = function(node, text) {
+            node.textContent = text;
+        };
+    } else {
+        setTextContent = function(node, text) {
+            node.innerText = text;
+        };
+    }
+}
+
+/**
+ * A function to clear a node.
+ */
+function clearNode(node) {
+    setTextContent(node, "");
+}
+
+module.exports = {
+    contains: contains,
+    deflt: deflt,
+    escape: escape,
+    hyphenate: hyphenate,
+    indexOf: indexOf,
+    setTextContent: setTextContent,
+    clearNode: clearNode,
+};
+
+
+/***/ }),
+/* 7 */
+/***/ (function(module, exports) {
+
+/**
+ * This is the ParseError class, which is the main error thrown by KaTeX
+ * functions when something has gone wrong. This is used to distinguish internal
+ * errors from errors in the expression that the user provided.
+ */
+function ParseError(message, lexer, position) {
+    var error = "KaTeX parse error: " + message;
+
+    if (lexer !== undefined && position !== undefined) {
+        // If we have the input and a position, make the error a bit fancier
+
+        // Prepend some information
+        error += " at position " + position + ": ";
+
+        // Get the input
+        var input = lexer._input;
+        // Insert a combining underscore at the correct position
+        input = input.slice(0, position) + "\u0332" +
+            input.slice(position);
+
+        // Extract some context from the input and add it to the error
+        var begin = Math.max(0, position - 15);
+        var end = position + 15;
+        error += input.slice(begin, end);
+    }
+
+    // Some hackery to make ParseError a prototype of Error
+    // See http://stackoverflow.com/a/8460753
+    var self = new Error(error);
+    self.name = "ParseError";
+    self.__proto__ = ParseError.prototype;
+
+    self.position = position;
+    return self;
+}
+
+// More hackery
+ParseError.prototype.__proto__ = Error.prototype;
+
+module.exports = ParseError;
+
+
+/***/ }),
+/* 8 */
+/***/ (function(module, exports) {
+
+// https://github.com/zloirock/core-js/issues/86#issuecomment-115759028
+var global = module.exports = typeof window != 'undefined' && window.Math == Math
+  ? window : typeof self != 'undefined' && self.Math == Math ? self
+  // eslint-disable-next-line no-new-func
+  : Function('return this')();
+if (typeof __g == 'number') __g = global; // eslint-disable-line no-undef
+
+
+/***/ }),
+/* 9 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var store = __webpack_require__(175)('wks');
+var uid = __webpack_require__(176);
+var Symbol = __webpack_require__(8).Symbol;
+var USE_SYMBOL = typeof Symbol == 'function';
+
+var $exports = module.exports = function (name) {
+  return store[name] || (store[name] =
+    USE_SYMBOL && Symbol[name] || (USE_SYMBOL ? Symbol : uid)('Symbol.' + name));
+};
+
+$exports.store = store;
+
+
+/***/ }),
+/* 10 */
 /***/ (function(module, exports) {
 
 var g;
@@ -5326,7 +5795,182 @@ module.exports = g;
 
 
 /***/ }),
-/* 6 */
+/* 11 */
+/***/ (function(module, exports) {
+
+var core = module.exports = { version: '2.5.1' };
+if (typeof __e == 'number') __e = core; // eslint-disable-line no-undef
+
+
+/***/ }),
+/* 12 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var dP = __webpack_require__(27);
+var createDesc = __webpack_require__(173);
+module.exports = __webpack_require__(17) ? function (object, key, value) {
+  return dP.f(object, key, createDesc(1, value));
+} : function (object, key, value) {
+  object[key] = value;
+  return object;
+};
+
+
+/***/ }),
+/* 13 */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* eslint no-unused-vars:0 */
+
+var Style = __webpack_require__(21);
+
+/**
+ * This file contains metrics regarding fonts and individual symbols. The sigma
+ * and xi variables, as well as the metricMap map contain data extracted from
+ * TeX, TeX font metrics, and the TTF files. These data are then exposed via the
+ * `metrics` variable and the getCharacterMetrics function.
+ */
+
+// These font metrics are extracted from TeX by using
+// \font\a=cmmi10
+// \showthe\fontdimenX\a
+// where X is the corresponding variable number. These correspond to the font
+// parameters of the symbol fonts. In TeX, there are actually three sets of
+// dimensions, one for each of textstyle, scriptstyle, and scriptscriptstyle,
+// but we only use the textstyle ones, and scale certain dimensions accordingly.
+// See the TeXbook, page 441.
+var sigma1 = 0.025;
+var sigma2 = 0;
+var sigma3 = 0;
+var sigma4 = 0;
+var sigma5 = 0.431;
+var sigma6 = 1;
+var sigma7 = 0;
+var sigma8 = 0.677;
+var sigma9 = 0.394;
+var sigma10 = 0.444;
+var sigma11 = 0.686;
+var sigma12 = 0.345;
+var sigma13 = 0.413;
+var sigma14 = 0.363;
+var sigma15 = 0.289;
+var sigma16 = 0.150;
+var sigma17 = 0.247;
+var sigma18 = 0.386;
+var sigma19 = 0.050;
+var sigma20 = 2.390;
+var sigma21 = 1.01;
+var sigma21Script = 0.81;
+var sigma21ScriptScript = 0.71;
+var sigma22 = 0.250;
+
+// These font metrics are extracted from TeX by using
+// \font\a=cmex10
+// \showthe\fontdimenX\a
+// where X is the corresponding variable number. These correspond to the font
+// parameters of the extension fonts (family 3). See the TeXbook, page 441.
+var xi1 = 0;
+var xi2 = 0;
+var xi3 = 0;
+var xi4 = 0;
+var xi5 = 0.431;
+var xi6 = 1;
+var xi7 = 0;
+var xi8 = 0.04;
+var xi9 = 0.111;
+var xi10 = 0.166;
+var xi11 = 0.2;
+var xi12 = 0.6;
+var xi13 = 0.1;
+
+// This value determines how large a pt is, for metrics which are defined in
+// terms of pts.
+// This value is also used in katex.less; if you change it make sure the values
+// match.
+var ptPerEm = 10.0;
+
+// The space between adjacent `|` columns in an array definition. From
+// `\showthe\doublerulesep` in LaTeX.
+var doubleRuleSep = 2.0 / ptPerEm;
+
+/**
+ * This is just a mapping from common names to real metrics
+ */
+var metrics = {
+    xHeight: sigma5,
+    quad: sigma6,
+    num1: sigma8,
+    num2: sigma9,
+    num3: sigma10,
+    denom1: sigma11,
+    denom2: sigma12,
+    sup1: sigma13,
+    sup2: sigma14,
+    sup3: sigma15,
+    sub1: sigma16,
+    sub2: sigma17,
+    supDrop: sigma18,
+    subDrop: sigma19,
+    axisHeight: sigma22,
+    defaultRuleThickness: xi8,
+    bigOpSpacing1: xi9,
+    bigOpSpacing2: xi10,
+    bigOpSpacing3: xi11,
+    bigOpSpacing4: xi12,
+    bigOpSpacing5: xi13,
+    ptPerEm: ptPerEm,
+    emPerEx: sigma5 / sigma6,
+    doubleRuleSep: doubleRuleSep,
+
+    // TODO(alpert): Missing parallel structure here. We should probably add
+    // style-specific metrics for all of these.
+    delim1: sigma20,
+    getDelim2: function(style) {
+        if (style.size === Style.TEXT.size) {
+            return sigma21;
+        } else if (style.size === Style.SCRIPT.size) {
+            return sigma21Script;
+        } else if (style.size === Style.SCRIPTSCRIPT.size) {
+            return sigma21ScriptScript;
+        }
+        throw new Error("Unexpected style size: " + style.size);
+    },
+};
+
+// This map contains a mapping from font name and character code to character
+// metrics, including height, depth, italic correction, and skew (kern from the
+// character to the corresponding \skewchar)
+// This map is generated via `make metrics`. It should not be changed manually.
+var metricMap = __webpack_require__(410);
+
+/**
+ * This function is a convenience function for looking up information in the
+ * metricMap table. It takes a character as a string, and a style.
+ *
+ * Note: the `width` property may be undefined if fontMetricsData.js wasn't
+ * built using `Make extended_metrics`.
+ */
+var getCharacterMetrics = function(character, style) {
+    var metrics = metricMap[style][character.charCodeAt(0)];
+    if (metrics) {
+        return {
+            depth: metrics[0],
+            height: metrics[1],
+            italic: metrics[2],
+            skew: metrics[3],
+            width: metrics[4],
+        };
+    }
+};
+
+module.exports = {
+    metrics: metrics,
+    getCharacterMetrics: getCharacterMetrics,
+};
+
+
+/***/ }),
+/* 14 */
 /***/ (function(module, exports) {
 
 module.exports = function(module) {
@@ -5354,14 +5998,1413 @@ module.exports = function(module) {
 
 
 /***/ }),
-/* 7 */
+/* 15 */
+/***/ (function(module, exports) {
+
+module.exports = {};
+
+
+/***/ }),
+/* 16 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var isObject = __webpack_require__(28);
+module.exports = function (it) {
+  if (!isObject(it)) throw TypeError(it + ' is not an object!');
+  return it;
+};
+
+
+/***/ }),
+/* 17 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// Thank's IE8 for his funny defineProperty
+module.exports = !__webpack_require__(29)(function () {
+  return Object.defineProperty({}, 'a', { get: function () { return 7; } }).a != 7;
+});
+
+
+/***/ }),
+/* 18 */
+/***/ (function(module, exports) {
+
+var hasOwnProperty = {}.hasOwnProperty;
+module.exports = function (it, key) {
+  return hasOwnProperty.call(it, key);
+};
+
+
+/***/ }),
+/* 19 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// Parse link destination
+//
+
+
+
+var isSpace     = __webpack_require__(1).isSpace;
+var unescapeAll = __webpack_require__(1).unescapeAll;
+
+
+module.exports = function parseLinkDestination(str, pos, max) {
+  var code, level,
+      lines = 0,
+      start = pos,
+      result = {
+        ok: false,
+        pos: 0,
+        lines: 0,
+        str: ''
+      };
+
+  if (str.charCodeAt(pos) === 0x3C /* < */) {
+    pos++;
+    while (pos < max) {
+      code = str.charCodeAt(pos);
+      if (code === 0x0A /* \n */ || isSpace(code)) { return result; }
+      if (code === 0x3E /* > */) {
+        result.pos = pos + 1;
+        result.str = unescapeAll(str.slice(start + 1, pos));
+        result.ok = true;
+        return result;
+      }
+      if (code === 0x5C /* \ */ && pos + 1 < max) {
+        pos += 2;
+        continue;
+      }
+
+      pos++;
+    }
+
+    // no closing '>'
+    return result;
+  }
+
+  // this should be ... } else { ... branch
+
+  level = 0;
+  while (pos < max) {
+    code = str.charCodeAt(pos);
+
+    if (code === 0x20) { break; }
+
+    // ascii control characters
+    if (code < 0x20 || code === 0x7F) { break; }
+
+    if (code === 0x5C /* \ */ && pos + 1 < max) {
+      pos += 2;
+      continue;
+    }
+
+    if (code === 0x28 /* ( */) {
+      level++;
+      if (level > 1) { break; }
+    }
+
+    if (code === 0x29 /* ) */) {
+      level--;
+      if (level < 0) { break; }
+    }
+
+    pos++;
+  }
+
+  if (start === pos) { return result; }
+
+  result.str = unescapeAll(str.slice(start, pos));
+  result.lines = lines;
+  result.pos = pos;
+  result.ok = true;
+  return result;
+};
+
+
+/***/ }),
+/* 20 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// Parse link title
+//
+
+
+
+var unescapeAll = __webpack_require__(1).unescapeAll;
+
+
+module.exports = function parseLinkTitle(str, pos, max) {
+  var code,
+      marker,
+      lines = 0,
+      start = pos,
+      result = {
+        ok: false,
+        pos: 0,
+        lines: 0,
+        str: ''
+      };
+
+  if (pos >= max) { return result; }
+
+  marker = str.charCodeAt(pos);
+
+  if (marker !== 0x22 /* " */ && marker !== 0x27 /* ' */ && marker !== 0x28 /* ( */) { return result; }
+
+  pos++;
+
+  // if opening marker is "(", switch it to closing marker ")"
+  if (marker === 0x28) { marker = 0x29; }
+
+  while (pos < max) {
+    code = str.charCodeAt(pos);
+    if (code === marker) {
+      result.pos = pos + 1;
+      result.lines = lines;
+      result.str = unescapeAll(str.slice(start + 1, pos));
+      result.ok = true;
+      return result;
+    } else if (code === 0x0A) {
+      lines++;
+    } else if (code === 0x5C /* \ */ && pos + 1 < max) {
+      pos++;
+      if (str.charCodeAt(pos) === 0x0A) {
+        lines++;
+      }
+    }
+
+    pos++;
+  }
+
+  return result;
+};
+
+
+/***/ }),
+/* 21 */
+/***/ (function(module, exports) {
+
+/**
+ * This file contains information and classes for the various kinds of styles
+ * used in TeX. It provides a generic `Style` class, which holds information
+ * about a specific style. It then provides instances of all the different kinds
+ * of styles possible, and provides functions to move between them and get
+ * information about them.
+ */
+
+/**
+ * The main style class. Contains a unique id for the style, a size (which is
+ * the same for cramped and uncramped version of a style), a cramped flag, and a
+ * size multiplier, which gives the size difference between a style and
+ * textstyle.
+ */
+function Style(id, size, multiplier, cramped) {
+    this.id = id;
+    this.size = size;
+    this.cramped = cramped;
+    this.sizeMultiplier = multiplier;
+}
+
+/**
+ * Get the style of a superscript given a base in the current style.
+ */
+Style.prototype.sup = function() {
+    return styles[sup[this.id]];
+};
+
+/**
+ * Get the style of a subscript given a base in the current style.
+ */
+Style.prototype.sub = function() {
+    return styles[sub[this.id]];
+};
+
+/**
+ * Get the style of a fraction numerator given the fraction in the current
+ * style.
+ */
+Style.prototype.fracNum = function() {
+    return styles[fracNum[this.id]];
+};
+
+/**
+ * Get the style of a fraction denominator given the fraction in the current
+ * style.
+ */
+Style.prototype.fracDen = function() {
+    return styles[fracDen[this.id]];
+};
+
+/**
+ * Get the cramped version of a style (in particular, cramping a cramped style
+ * doesn't change the style).
+ */
+Style.prototype.cramp = function() {
+    return styles[cramp[this.id]];
+};
+
+/**
+ * HTML class name, like "displaystyle cramped"
+ */
+Style.prototype.cls = function() {
+    return sizeNames[this.size] + (this.cramped ? " cramped" : " uncramped");
+};
+
+/**
+ * HTML Reset class name, like "reset-textstyle"
+ */
+Style.prototype.reset = function() {
+    return resetNames[this.size];
+};
+
+// IDs of the different styles
+var D = 0;
+var Dc = 1;
+var T = 2;
+var Tc = 3;
+var S = 4;
+var Sc = 5;
+var SS = 6;
+var SSc = 7;
+
+// String names for the different sizes
+var sizeNames = [
+    "displaystyle textstyle",
+    "textstyle",
+    "scriptstyle",
+    "scriptscriptstyle",
+];
+
+// Reset names for the different sizes
+var resetNames = [
+    "reset-textstyle",
+    "reset-textstyle",
+    "reset-scriptstyle",
+    "reset-scriptscriptstyle",
+];
+
+// Instances of the different styles
+var styles = [
+    new Style(D, 0, 1.0, false),
+    new Style(Dc, 0, 1.0, true),
+    new Style(T, 1, 1.0, false),
+    new Style(Tc, 1, 1.0, true),
+    new Style(S, 2, 0.7, false),
+    new Style(Sc, 2, 0.7, true),
+    new Style(SS, 3, 0.5, false),
+    new Style(SSc, 3, 0.5, true),
+];
+
+// Lookup tables for switching from one style to another
+var sup = [S, Sc, S, Sc, SS, SSc, SS, SSc];
+var sub = [Sc, Sc, Sc, Sc, SSc, SSc, SSc, SSc];
+var fracNum = [T, Tc, S, Sc, SS, SSc, SS, SSc];
+var fracDen = [Tc, Tc, Sc, Sc, SSc, SSc, SSc, SSc];
+var cramp = [Dc, Dc, Tc, Tc, Sc, Sc, SSc, SSc];
+
+// We only export some of the styles. Also, we don't export the `Style` class so
+// no more styles can be generated.
+module.exports = {
+    DISPLAY: styles[D],
+    TEXT: styles[T],
+    SCRIPT: styles[S],
+    SCRIPTSCRIPT: styles[SS],
+};
+
+
+/***/ }),
+/* 22 */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* eslint no-console:0 */
+/**
+ * This module contains general functions that can be used for building
+ * different kinds of domTree nodes in a consistent manner.
+ */
+
+var domTree = __webpack_require__(189);
+var fontMetrics = __webpack_require__(13);
+var symbols = __webpack_require__(23);
+var utils = __webpack_require__(6);
+
+var greekCapitals = [
+    "\\Gamma",
+    "\\Delta",
+    "\\Theta",
+    "\\Lambda",
+    "\\Xi",
+    "\\Pi",
+    "\\Sigma",
+    "\\Upsilon",
+    "\\Phi",
+    "\\Psi",
+    "\\Omega",
+];
+
+var dotlessLetters = [
+    "\u0131",   // dotless i, \imath
+    "\u0237",   // dotless j, \jmath
+];
+
+/**
+ * Makes a symbolNode after translation via the list of symbols in symbols.js.
+ * Correctly pulls out metrics for the character, and optionally takes a list of
+ * classes to be attached to the node.
+ */
+var makeSymbol = function(value, style, mode, color, classes) {
+    // Replace the value with its replaced value from symbol.js
+    if (symbols[mode][value] && symbols[mode][value].replace) {
+        value = symbols[mode][value].replace;
+    }
+
+    var metrics = fontMetrics.getCharacterMetrics(value, style);
+
+    var symbolNode;
+    if (metrics) {
+        symbolNode = new domTree.symbolNode(
+            value, metrics.height, metrics.depth, metrics.italic, metrics.skew,
+            classes);
+    } else {
+        // TODO(emily): Figure out a good way to only print this in development
+        typeof console !== "undefined" && console.warn(
+            "No character metrics for '" + value + "' in style '" +
+                style + "'");
+        symbolNode = new domTree.symbolNode(value, 0, 0, 0, 0, classes);
+    }
+
+    if (color) {
+        symbolNode.style.color = color;
+    }
+
+    return symbolNode;
+};
+
+/**
+ * Makes a symbol in Main-Regular or AMS-Regular.
+ * Used for rel, bin, open, close, inner, and punct.
+ */
+var mathsym = function(value, mode, color, classes) {
+    // Decide what font to render the symbol in by its entry in the symbols
+    // table.
+    // Have a special case for when the value = \ because the \ is used as a
+    // textord in unsupported command errors but cannot be parsed as a regular
+    // text ordinal and is therefore not present as a symbol in the symbols
+    // table for text
+    if (value === "\\" || symbols[mode][value].font === "main") {
+        return makeSymbol(value, "Main-Regular", mode, color, classes);
+    } else {
+        return makeSymbol(
+            value, "AMS-Regular", mode, color, classes.concat(["amsrm"]));
+    }
+};
+
+/**
+ * Makes a symbol in the default font for mathords and textords.
+ */
+var mathDefault = function(value, mode, color, classes, type) {
+    if (type === "mathord") {
+        return mathit(value, mode, color, classes);
+    } else if (type === "textord") {
+        return makeSymbol(
+            value, "Main-Regular", mode, color, classes.concat(["mathrm"]));
+    } else {
+        throw new Error("unexpected type: " + type + " in mathDefault");
+    }
+};
+
+/**
+ * Makes a symbol in the italic math font.
+ */
+var mathit = function(value, mode, color, classes) {
+    if (/[0-9]/.test(value.charAt(0)) ||
+            // glyphs for \imath and \jmath do not exist in Math-Italic so we
+            // need to use Main-Italic instead
+            utils.contains(dotlessLetters, value) ||
+            utils.contains(greekCapitals, value)) {
+        return makeSymbol(
+            value, "Main-Italic", mode, color, classes.concat(["mainit"]));
+    } else {
+        return makeSymbol(
+            value, "Math-Italic", mode, color, classes.concat(["mathit"]));
+    }
+};
+
+/**
+ * Makes either a mathord or textord in the correct font and color.
+ */
+var makeOrd = function(group, options, type) {
+    var mode = group.mode;
+    var value = group.value;
+    if (symbols[mode][value] && symbols[mode][value].replace) {
+        value = symbols[mode][value].replace;
+    }
+
+    var classes = ["mord"];
+    var color = options.getColor();
+
+    var font = options.font;
+    if (font) {
+        if (font === "mathit" || utils.contains(dotlessLetters, value)) {
+            return mathit(value, mode, color, classes);
+        } else {
+            var fontName = fontMap[font].fontName;
+            if (fontMetrics.getCharacterMetrics(value, fontName)) {
+                return makeSymbol(
+                    value, fontName, mode, color, classes.concat([font]));
+            } else {
+                return mathDefault(value, mode, color, classes, type);
+            }
+        }
+    } else {
+        return mathDefault(value, mode, color, classes, type);
+    }
+};
+
+/**
+ * Calculate the height, depth, and maxFontSize of an element based on its
+ * children.
+ */
+var sizeElementFromChildren = function(elem) {
+    var height = 0;
+    var depth = 0;
+    var maxFontSize = 0;
+
+    if (elem.children) {
+        for (var i = 0; i < elem.children.length; i++) {
+            if (elem.children[i].height > height) {
+                height = elem.children[i].height;
+            }
+            if (elem.children[i].depth > depth) {
+                depth = elem.children[i].depth;
+            }
+            if (elem.children[i].maxFontSize > maxFontSize) {
+                maxFontSize = elem.children[i].maxFontSize;
+            }
+        }
+    }
+
+    elem.height = height;
+    elem.depth = depth;
+    elem.maxFontSize = maxFontSize;
+};
+
+/**
+ * Makes a span with the given list of classes, list of children, and color.
+ */
+var makeSpan = function(classes, children, color) {
+    var span = new domTree.span(classes, children);
+
+    sizeElementFromChildren(span);
+
+    if (color) {
+        span.style.color = color;
+    }
+
+    return span;
+};
+
+/**
+ * Makes a document fragment with the given list of children.
+ */
+var makeFragment = function(children) {
+    var fragment = new domTree.documentFragment(children);
+
+    sizeElementFromChildren(fragment);
+
+    return fragment;
+};
+
+/**
+ * Makes an element placed in each of the vlist elements to ensure that each
+ * element has the same max font size. To do this, we create a zero-width space
+ * with the correct font size.
+ */
+var makeFontSizer = function(options, fontSize) {
+    var fontSizeInner = makeSpan([], [new domTree.symbolNode("\u200b")]);
+    fontSizeInner.style.fontSize =
+        (fontSize / options.style.sizeMultiplier) + "em";
+
+    var fontSizer = makeSpan(
+        ["fontsize-ensurer", "reset-" + options.size, "size5"],
+        [fontSizeInner]);
+
+    return fontSizer;
+};
+
+/**
+ * Makes a vertical list by stacking elements and kerns on top of each other.
+ * Allows for many different ways of specifying the positioning method.
+ *
+ * Arguments:
+ *  - children: A list of child or kern nodes to be stacked on top of each other
+ *              (i.e. the first element will be at the bottom, and the last at
+ *              the top). Element nodes are specified as
+ *                {type: "elem", elem: node}
+ *              while kern nodes are specified as
+ *                {type: "kern", size: size}
+ *  - positionType: The method by which the vlist should be positioned. Valid
+ *                  values are:
+ *                   - "individualShift": The children list only contains elem
+ *                                        nodes, and each node contains an extra
+ *                                        "shift" value of how much it should be
+ *                                        shifted (note that shifting is always
+ *                                        moving downwards). positionData is
+ *                                        ignored.
+ *                   - "top": The positionData specifies the topmost point of
+ *                            the vlist (note this is expected to be a height,
+ *                            so positive values move up)
+ *                   - "bottom": The positionData specifies the bottommost point
+ *                               of the vlist (note this is expected to be a
+ *                               depth, so positive values move down
+ *                   - "shift": The vlist will be positioned such that its
+ *                              baseline is positionData away from the baseline
+ *                              of the first child. Positive values move
+ *                              downwards.
+ *                   - "firstBaseline": The vlist will be positioned such that
+ *                                      its baseline is aligned with the
+ *                                      baseline of the first child.
+ *                                      positionData is ignored. (this is
+ *                                      equivalent to "shift" with
+ *                                      positionData=0)
+ *  - positionData: Data used in different ways depending on positionType
+ *  - options: An Options object
+ *
+ */
+var makeVList = function(children, positionType, positionData, options) {
+    var depth;
+    var currPos;
+    var i;
+    if (positionType === "individualShift") {
+        var oldChildren = children;
+        children = [oldChildren[0]];
+
+        // Add in kerns to the list of children to get each element to be
+        // shifted to the correct specified shift
+        depth = -oldChildren[0].shift - oldChildren[0].elem.depth;
+        currPos = depth;
+        for (i = 1; i < oldChildren.length; i++) {
+            var diff = -oldChildren[i].shift - currPos -
+                oldChildren[i].elem.depth;
+            var size = diff -
+                (oldChildren[i - 1].elem.height +
+                 oldChildren[i - 1].elem.depth);
+
+            currPos = currPos + diff;
+
+            children.push({type: "kern", size: size});
+            children.push(oldChildren[i]);
+        }
+    } else if (positionType === "top") {
+        // We always start at the bottom, so calculate the bottom by adding up
+        // all the sizes
+        var bottom = positionData;
+        for (i = 0; i < children.length; i++) {
+            if (children[i].type === "kern") {
+                bottom -= children[i].size;
+            } else {
+                bottom -= children[i].elem.height + children[i].elem.depth;
+            }
+        }
+        depth = bottom;
+    } else if (positionType === "bottom") {
+        depth = -positionData;
+    } else if (positionType === "shift") {
+        depth = -children[0].elem.depth - positionData;
+    } else if (positionType === "firstBaseline") {
+        depth = -children[0].elem.depth;
+    } else {
+        depth = 0;
+    }
+
+    // Make the fontSizer
+    var maxFontSize = 0;
+    for (i = 0; i < children.length; i++) {
+        if (children[i].type === "elem") {
+            maxFontSize = Math.max(maxFontSize, children[i].elem.maxFontSize);
+        }
+    }
+    var fontSizer = makeFontSizer(options, maxFontSize);
+
+    // Create a new list of actual children at the correct offsets
+    var realChildren = [];
+    currPos = depth;
+    for (i = 0; i < children.length; i++) {
+        if (children[i].type === "kern") {
+            currPos += children[i].size;
+        } else {
+            var child = children[i].elem;
+
+            var shift = -child.depth - currPos;
+            currPos += child.height + child.depth;
+
+            var childWrap = makeSpan([], [fontSizer, child]);
+            childWrap.height -= shift;
+            childWrap.depth += shift;
+            childWrap.style.top = shift + "em";
+
+            realChildren.push(childWrap);
+        }
+    }
+
+    // Add in an element at the end with no offset to fix the calculation of
+    // baselines in some browsers (namely IE, sometimes safari)
+    var baselineFix = makeSpan(
+        ["baseline-fix"], [fontSizer, new domTree.symbolNode("\u200b")]);
+    realChildren.push(baselineFix);
+
+    var vlist = makeSpan(["vlist"], realChildren);
+    // Fix the final height and depth, in case there were kerns at the ends
+    // since the makeSpan calculation won't take that in to account.
+    vlist.height = Math.max(currPos, vlist.height);
+    vlist.depth = Math.max(-depth, vlist.depth);
+    return vlist;
+};
+
+// A table of size -> font size for the different sizing functions
+var sizingMultiplier = {
+    size1: 0.5,
+    size2: 0.7,
+    size3: 0.8,
+    size4: 0.9,
+    size5: 1.0,
+    size6: 1.2,
+    size7: 1.44,
+    size8: 1.73,
+    size9: 2.07,
+    size10: 2.49,
+};
+
+// A map of spacing functions to their attributes, like size and corresponding
+// CSS class
+var spacingFunctions = {
+    "\\qquad": {
+        size: "2em",
+        className: "qquad",
+    },
+    "\\quad": {
+        size: "1em",
+        className: "quad",
+    },
+    "\\enspace": {
+        size: "0.5em",
+        className: "enspace",
+    },
+    "\\;": {
+        size: "0.277778em",
+        className: "thickspace",
+    },
+    "\\:": {
+        size: "0.22222em",
+        className: "mediumspace",
+    },
+    "\\,": {
+        size: "0.16667em",
+        className: "thinspace",
+    },
+    "\\!": {
+        size: "-0.16667em",
+        className: "negativethinspace",
+    },
+};
+
+/**
+ * Maps TeX font commands to objects containing:
+ * - variant: string used for "mathvariant" attribute in buildMathML.js
+ * - fontName: the "style" parameter to fontMetrics.getCharacterMetrics
+ */
+// A map between tex font commands an MathML mathvariant attribute values
+var fontMap = {
+    // styles
+    "mathbf": {
+        variant: "bold",
+        fontName: "Main-Bold",
+    },
+    "mathrm": {
+        variant: "normal",
+        fontName: "Main-Regular",
+    },
+
+    // "mathit" is missing because it requires the use of two fonts: Main-Italic
+    // and Math-Italic.  This is handled by a special case in makeOrd which ends
+    // up calling mathit.
+
+    // families
+    "mathbb": {
+        variant: "double-struck",
+        fontName: "AMS-Regular",
+    },
+    "mathcal": {
+        variant: "script",
+        fontName: "Caligraphic-Regular",
+    },
+    "mathfrak": {
+        variant: "fraktur",
+        fontName: "Fraktur-Regular",
+    },
+    "mathscr": {
+        variant: "script",
+        fontName: "Script-Regular",
+    },
+    "mathsf": {
+        variant: "sans-serif",
+        fontName: "SansSerif-Regular",
+    },
+    "mathtt": {
+        variant: "monospace",
+        fontName: "Typewriter-Regular",
+    },
+};
+
+module.exports = {
+    fontMap: fontMap,
+    makeSymbol: makeSymbol,
+    mathsym: mathsym,
+    makeSpan: makeSpan,
+    makeFragment: makeFragment,
+    makeVList: makeVList,
+    makeOrd: makeOrd,
+    sizingMultiplier: sizingMultiplier,
+    spacingFunctions: spacingFunctions,
+};
+
+
+/***/ }),
+/* 23 */
+/***/ (function(module, exports) {
+
+/**
+ * This file holds a list of all no-argument functions and single-character
+ * symbols (like 'a' or ';').
+ *
+ * For each of the symbols, there are three properties they can have:
+ * - font (required): the font to be used for this symbol. Either "main" (the
+     normal font), or "ams" (the ams fonts).
+ * - group (required): the ParseNode group type the symbol should have (i.e.
+     "textord", "mathord", etc).
+     See https://github.com/Khan/KaTeX/wiki/Examining-TeX#group-types
+ * - replace: the character that this symbol or function should be
+ *   replaced with (i.e. "\phi" has a replace value of "\u03d5", the phi
+ *   character in the main font).
+ *
+ * The outermost map in the table indicates what mode the symbols should be
+ * accepted in (e.g. "math" or "text").
+ */
+
+module.exports = {
+    math: {},
+    text: {},
+};
+
+function defineSymbol(mode, font, group, replace, name) {
+    module.exports[mode][name] = {
+        font: font,
+        group: group,
+        replace: replace,
+    };
+}
+
+// Some abbreviations for commonly used strings.
+// This helps minify the code, and also spotting typos using jshint.
+
+// modes:
+var math = "math";
+var text = "text";
+
+// fonts:
+var main = "main";
+var ams = "ams";
+
+// groups:
+var accent = "accent";
+var bin = "bin";
+var close = "close";
+var inner = "inner";
+var mathord = "mathord";
+var op = "op";
+var open = "open";
+var punct = "punct";
+var rel = "rel";
+var spacing = "spacing";
+var textord = "textord";
+
+// Now comes the symbol table
+
+// Relation Symbols
+defineSymbol(math, main, rel, "\u2261", "\\equiv");
+defineSymbol(math, main, rel, "\u227a", "\\prec");
+defineSymbol(math, main, rel, "\u227b", "\\succ");
+defineSymbol(math, main, rel, "\u223c", "\\sim");
+defineSymbol(math, main, rel, "\u22a5", "\\perp");
+defineSymbol(math, main, rel, "\u2aaf", "\\preceq");
+defineSymbol(math, main, rel, "\u2ab0", "\\succeq");
+defineSymbol(math, main, rel, "\u2243", "\\simeq");
+defineSymbol(math, main, rel, "\u2223", "\\mid");
+defineSymbol(math, main, rel, "\u226a", "\\ll");
+defineSymbol(math, main, rel, "\u226b", "\\gg");
+defineSymbol(math, main, rel, "\u224d", "\\asymp");
+defineSymbol(math, main, rel, "\u2225", "\\parallel");
+defineSymbol(math, main, rel, "\u22c8", "\\bowtie");
+defineSymbol(math, main, rel, "\u2323", "\\smile");
+defineSymbol(math, main, rel, "\u2291", "\\sqsubseteq");
+defineSymbol(math, main, rel, "\u2292", "\\sqsupseteq");
+defineSymbol(math, main, rel, "\u2250", "\\doteq");
+defineSymbol(math, main, rel, "\u2322", "\\frown");
+defineSymbol(math, main, rel, "\u220b", "\\ni");
+defineSymbol(math, main, rel, "\u221d", "\\propto");
+defineSymbol(math, main, rel, "\u22a2", "\\vdash");
+defineSymbol(math, main, rel, "\u22a3", "\\dashv");
+defineSymbol(math, main, rel, "\u220b", "\\owns");
+
+// Punctuation
+defineSymbol(math, main, punct, "\u002e", "\\ldotp");
+defineSymbol(math, main, punct, "\u22c5", "\\cdotp");
+
+// Misc Symbols
+defineSymbol(math, main, textord, "\u0023", "\\#");
+defineSymbol(math, main, textord, "\u0026", "\\&");
+defineSymbol(math, main, textord, "\u2135", "\\aleph");
+defineSymbol(math, main, textord, "\u2200", "\\forall");
+defineSymbol(math, main, textord, "\u210f", "\\hbar");
+defineSymbol(math, main, textord, "\u2203", "\\exists");
+defineSymbol(math, main, textord, "\u2207", "\\nabla");
+defineSymbol(math, main, textord, "\u266d", "\\flat");
+defineSymbol(math, main, textord, "\u2113", "\\ell");
+defineSymbol(math, main, textord, "\u266e", "\\natural");
+defineSymbol(math, main, textord, "\u2663", "\\clubsuit");
+defineSymbol(math, main, textord, "\u2118", "\\wp");
+defineSymbol(math, main, textord, "\u266f", "\\sharp");
+defineSymbol(math, main, textord, "\u2662", "\\diamondsuit");
+defineSymbol(math, main, textord, "\u211c", "\\Re");
+defineSymbol(math, main, textord, "\u2661", "\\heartsuit");
+defineSymbol(math, main, textord, "\u2111", "\\Im");
+defineSymbol(math, main, textord, "\u2660", "\\spadesuit");
+
+// Math and Text
+defineSymbol(math, main, textord, "\u2020", "\\dag");
+defineSymbol(math, main, textord, "\u2021", "\\ddag");
+
+// Large Delimiters
+defineSymbol(math, main, close, "\u23b1", "\\rmoustache");
+defineSymbol(math, main, open, "\u23b0", "\\lmoustache");
+defineSymbol(math, main, close, "\u27ef", "\\rgroup");
+defineSymbol(math, main, open, "\u27ee", "\\lgroup");
+
+// Binary Operators
+defineSymbol(math, main, bin, "\u2213", "\\mp");
+defineSymbol(math, main, bin, "\u2296", "\\ominus");
+defineSymbol(math, main, bin, "\u228e", "\\uplus");
+defineSymbol(math, main, bin, "\u2293", "\\sqcap");
+defineSymbol(math, main, bin, "\u2217", "\\ast");
+defineSymbol(math, main, bin, "\u2294", "\\sqcup");
+defineSymbol(math, main, bin, "\u25ef", "\\bigcirc");
+defineSymbol(math, main, bin, "\u2219", "\\bullet");
+defineSymbol(math, main, bin, "\u2021", "\\ddagger");
+defineSymbol(math, main, bin, "\u2240", "\\wr");
+defineSymbol(math, main, bin, "\u2a3f", "\\amalg");
+
+// Arrow Symbols
+defineSymbol(math, main, rel, "\u27f5", "\\longleftarrow");
+defineSymbol(math, main, rel, "\u21d0", "\\Leftarrow");
+defineSymbol(math, main, rel, "\u27f8", "\\Longleftarrow");
+defineSymbol(math, main, rel, "\u27f6", "\\longrightarrow");
+defineSymbol(math, main, rel, "\u21d2", "\\Rightarrow");
+defineSymbol(math, main, rel, "\u27f9", "\\Longrightarrow");
+defineSymbol(math, main, rel, "\u2194", "\\leftrightarrow");
+defineSymbol(math, main, rel, "\u27f7", "\\longleftrightarrow");
+defineSymbol(math, main, rel, "\u21d4", "\\Leftrightarrow");
+defineSymbol(math, main, rel, "\u27fa", "\\Longleftrightarrow");
+defineSymbol(math, main, rel, "\u21a6", "\\mapsto");
+defineSymbol(math, main, rel, "\u27fc", "\\longmapsto");
+defineSymbol(math, main, rel, "\u2197", "\\nearrow");
+defineSymbol(math, main, rel, "\u21a9", "\\hookleftarrow");
+defineSymbol(math, main, rel, "\u21aa", "\\hookrightarrow");
+defineSymbol(math, main, rel, "\u2198", "\\searrow");
+defineSymbol(math, main, rel, "\u21bc", "\\leftharpoonup");
+defineSymbol(math, main, rel, "\u21c0", "\\rightharpoonup");
+defineSymbol(math, main, rel, "\u2199", "\\swarrow");
+defineSymbol(math, main, rel, "\u21bd", "\\leftharpoondown");
+defineSymbol(math, main, rel, "\u21c1", "\\rightharpoondown");
+defineSymbol(math, main, rel, "\u2196", "\\nwarrow");
+defineSymbol(math, main, rel, "\u21cc", "\\rightleftharpoons");
+
+// AMS Negated Binary Relations
+defineSymbol(math, ams, rel, "\u226e", "\\nless");
+defineSymbol(math, ams, rel, "\ue010", "\\nleqslant");
+defineSymbol(math, ams, rel, "\ue011", "\\nleqq");
+defineSymbol(math, ams, rel, "\u2a87", "\\lneq");
+defineSymbol(math, ams, rel, "\u2268", "\\lneqq");
+defineSymbol(math, ams, rel, "\ue00c", "\\lvertneqq");
+defineSymbol(math, ams, rel, "\u22e6", "\\lnsim");
+defineSymbol(math, ams, rel, "\u2a89", "\\lnapprox");
+defineSymbol(math, ams, rel, "\u2280", "\\nprec");
+defineSymbol(math, ams, rel, "\u22e0", "\\npreceq");
+defineSymbol(math, ams, rel, "\u22e8", "\\precnsim");
+defineSymbol(math, ams, rel, "\u2ab9", "\\precnapprox");
+defineSymbol(math, ams, rel, "\u2241", "\\nsim");
+defineSymbol(math, ams, rel, "\ue006", "\\nshortmid");
+defineSymbol(math, ams, rel, "\u2224", "\\nmid");
+defineSymbol(math, ams, rel, "\u22ac", "\\nvdash");
+defineSymbol(math, ams, rel, "\u22ad", "\\nvDash");
+defineSymbol(math, ams, rel, "\u22ea", "\\ntriangleleft");
+defineSymbol(math, ams, rel, "\u22ec", "\\ntrianglelefteq");
+defineSymbol(math, ams, rel, "\u228a", "\\subsetneq");
+defineSymbol(math, ams, rel, "\ue01a", "\\varsubsetneq");
+defineSymbol(math, ams, rel, "\u2acb", "\\subsetneqq");
+defineSymbol(math, ams, rel, "\ue017", "\\varsubsetneqq");
+defineSymbol(math, ams, rel, "\u226f", "\\ngtr");
+defineSymbol(math, ams, rel, "\ue00f", "\\ngeqslant");
+defineSymbol(math, ams, rel, "\ue00e", "\\ngeqq");
+defineSymbol(math, ams, rel, "\u2a88", "\\gneq");
+defineSymbol(math, ams, rel, "\u2269", "\\gneqq");
+defineSymbol(math, ams, rel, "\ue00d", "\\gvertneqq");
+defineSymbol(math, ams, rel, "\u22e7", "\\gnsim");
+defineSymbol(math, ams, rel, "\u2a8a", "\\gnapprox");
+defineSymbol(math, ams, rel, "\u2281", "\\nsucc");
+defineSymbol(math, ams, rel, "\u22e1", "\\nsucceq");
+defineSymbol(math, ams, rel, "\u22e9", "\\succnsim");
+defineSymbol(math, ams, rel, "\u2aba", "\\succnapprox");
+defineSymbol(math, ams, rel, "\u2246", "\\ncong");
+defineSymbol(math, ams, rel, "\ue007", "\\nshortparallel");
+defineSymbol(math, ams, rel, "\u2226", "\\nparallel");
+defineSymbol(math, ams, rel, "\u22af", "\\nVDash");
+defineSymbol(math, ams, rel, "\u22eb", "\\ntriangleright");
+defineSymbol(math, ams, rel, "\u22ed", "\\ntrianglerighteq");
+defineSymbol(math, ams, rel, "\ue018", "\\nsupseteqq");
+defineSymbol(math, ams, rel, "\u228b", "\\supsetneq");
+defineSymbol(math, ams, rel, "\ue01b", "\\varsupsetneq");
+defineSymbol(math, ams, rel, "\u2acc", "\\supsetneqq");
+defineSymbol(math, ams, rel, "\ue019", "\\varsupsetneqq");
+defineSymbol(math, ams, rel, "\u22ae", "\\nVdash");
+defineSymbol(math, ams, rel, "\u2ab5", "\\precneqq");
+defineSymbol(math, ams, rel, "\u2ab6", "\\succneqq");
+defineSymbol(math, ams, rel, "\ue016", "\\nsubseteqq");
+defineSymbol(math, ams, bin, "\u22b4", "\\unlhd");
+defineSymbol(math, ams, bin, "\u22b5", "\\unrhd");
+
+// AMS Negated Arrows
+defineSymbol(math, ams, rel, "\u219a", "\\nleftarrow");
+defineSymbol(math, ams, rel, "\u219b", "\\nrightarrow");
+defineSymbol(math, ams, rel, "\u21cd", "\\nLeftarrow");
+defineSymbol(math, ams, rel, "\u21cf", "\\nRightarrow");
+defineSymbol(math, ams, rel, "\u21ae", "\\nleftrightarrow");
+defineSymbol(math, ams, rel, "\u21ce", "\\nLeftrightarrow");
+
+// AMS Misc
+defineSymbol(math, ams, rel, "\u25b3", "\\vartriangle");
+defineSymbol(math, ams, textord, "\u210f", "\\hslash");
+defineSymbol(math, ams, textord, "\u25bd", "\\triangledown");
+defineSymbol(math, ams, textord, "\u25ca", "\\lozenge");
+defineSymbol(math, ams, textord, "\u24c8", "\\circledS");
+defineSymbol(math, ams, textord, "\u00ae", "\\circledR");
+defineSymbol(math, ams, textord, "\u2221", "\\measuredangle");
+defineSymbol(math, ams, textord, "\u2204", "\\nexists");
+defineSymbol(math, ams, textord, "\u2127", "\\mho");
+defineSymbol(math, ams, textord, "\u2132", "\\Finv");
+defineSymbol(math, ams, textord, "\u2141", "\\Game");
+defineSymbol(math, ams, textord, "\u006b", "\\Bbbk");
+defineSymbol(math, ams, textord, "\u2035", "\\backprime");
+defineSymbol(math, ams, textord, "\u25b2", "\\blacktriangle");
+defineSymbol(math, ams, textord, "\u25bc", "\\blacktriangledown");
+defineSymbol(math, ams, textord, "\u25a0", "\\blacksquare");
+defineSymbol(math, ams, textord, "\u29eb", "\\blacklozenge");
+defineSymbol(math, ams, textord, "\u2605", "\\bigstar");
+defineSymbol(math, ams, textord, "\u2222", "\\sphericalangle");
+defineSymbol(math, ams, textord, "\u2201", "\\complement");
+defineSymbol(math, ams, textord, "\u00f0", "\\eth");
+defineSymbol(math, ams, textord, "\u2571", "\\diagup");
+defineSymbol(math, ams, textord, "\u2572", "\\diagdown");
+defineSymbol(math, ams, textord, "\u25a1", "\\square");
+defineSymbol(math, ams, textord, "\u25a1", "\\Box");
+defineSymbol(math, ams, textord, "\u25ca", "\\Diamond");
+defineSymbol(math, ams, textord, "\u00a5", "\\yen");
+defineSymbol(math, ams, textord, "\u2713", "\\checkmark");
+
+// AMS Hebrew
+defineSymbol(math, ams, textord, "\u2136", "\\beth");
+defineSymbol(math, ams, textord, "\u2138", "\\daleth");
+defineSymbol(math, ams, textord, "\u2137", "\\gimel");
+
+// AMS Greek
+defineSymbol(math, ams, textord, "\u03dd", "\\digamma");
+defineSymbol(math, ams, textord, "\u03f0", "\\varkappa");
+
+// AMS Delimiters
+defineSymbol(math, ams, open, "\u250c", "\\ulcorner");
+defineSymbol(math, ams, close, "\u2510", "\\urcorner");
+defineSymbol(math, ams, open, "\u2514", "\\llcorner");
+defineSymbol(math, ams, close, "\u2518", "\\lrcorner");
+
+// AMS Binary Relations
+defineSymbol(math, ams, rel, "\u2266", "\\leqq");
+defineSymbol(math, ams, rel, "\u2a7d", "\\leqslant");
+defineSymbol(math, ams, rel, "\u2a95", "\\eqslantless");
+defineSymbol(math, ams, rel, "\u2272", "\\lesssim");
+defineSymbol(math, ams, rel, "\u2a85", "\\lessapprox");
+defineSymbol(math, ams, rel, "\u224a", "\\approxeq");
+defineSymbol(math, ams, bin, "\u22d6", "\\lessdot");
+defineSymbol(math, ams, rel, "\u22d8", "\\lll");
+defineSymbol(math, ams, rel, "\u2276", "\\lessgtr");
+defineSymbol(math, ams, rel, "\u22da", "\\lesseqgtr");
+defineSymbol(math, ams, rel, "\u2a8b", "\\lesseqqgtr");
+defineSymbol(math, ams, rel, "\u2251", "\\doteqdot");
+defineSymbol(math, ams, rel, "\u2253", "\\risingdotseq");
+defineSymbol(math, ams, rel, "\u2252", "\\fallingdotseq");
+defineSymbol(math, ams, rel, "\u223d", "\\backsim");
+defineSymbol(math, ams, rel, "\u22cd", "\\backsimeq");
+defineSymbol(math, ams, rel, "\u2ac5", "\\subseteqq");
+defineSymbol(math, ams, rel, "\u22d0", "\\Subset");
+defineSymbol(math, ams, rel, "\u228f", "\\sqsubset");
+defineSymbol(math, ams, rel, "\u227c", "\\preccurlyeq");
+defineSymbol(math, ams, rel, "\u22de", "\\curlyeqprec");
+defineSymbol(math, ams, rel, "\u227e", "\\precsim");
+defineSymbol(math, ams, rel, "\u2ab7", "\\precapprox");
+defineSymbol(math, ams, rel, "\u22b2", "\\vartriangleleft");
+defineSymbol(math, ams, rel, "\u22b4", "\\trianglelefteq");
+defineSymbol(math, ams, rel, "\u22a8", "\\vDash");
+defineSymbol(math, ams, rel, "\u22aa", "\\Vvdash");
+defineSymbol(math, ams, rel, "\u2323", "\\smallsmile");
+defineSymbol(math, ams, rel, "\u2322", "\\smallfrown");
+defineSymbol(math, ams, rel, "\u224f", "\\bumpeq");
+defineSymbol(math, ams, rel, "\u224e", "\\Bumpeq");
+defineSymbol(math, ams, rel, "\u2267", "\\geqq");
+defineSymbol(math, ams, rel, "\u2a7e", "\\geqslant");
+defineSymbol(math, ams, rel, "\u2a96", "\\eqslantgtr");
+defineSymbol(math, ams, rel, "\u2273", "\\gtrsim");
+defineSymbol(math, ams, rel, "\u2a86", "\\gtrapprox");
+defineSymbol(math, ams, bin, "\u22d7", "\\gtrdot");
+defineSymbol(math, ams, rel, "\u22d9", "\\ggg");
+defineSymbol(math, ams, rel, "\u2277", "\\gtrless");
+defineSymbol(math, ams, rel, "\u22db", "\\gtreqless");
+defineSymbol(math, ams, rel, "\u2a8c", "\\gtreqqless");
+defineSymbol(math, ams, rel, "\u2256", "\\eqcirc");
+defineSymbol(math, ams, rel, "\u2257", "\\circeq");
+defineSymbol(math, ams, rel, "\u225c", "\\triangleq");
+defineSymbol(math, ams, rel, "\u223c", "\\thicksim");
+defineSymbol(math, ams, rel, "\u2248", "\\thickapprox");
+defineSymbol(math, ams, rel, "\u2ac6", "\\supseteqq");
+defineSymbol(math, ams, rel, "\u22d1", "\\Supset");
+defineSymbol(math, ams, rel, "\u2290", "\\sqsupset");
+defineSymbol(math, ams, rel, "\u227d", "\\succcurlyeq");
+defineSymbol(math, ams, rel, "\u22df", "\\curlyeqsucc");
+defineSymbol(math, ams, rel, "\u227f", "\\succsim");
+defineSymbol(math, ams, rel, "\u2ab8", "\\succapprox");
+defineSymbol(math, ams, rel, "\u22b3", "\\vartriangleright");
+defineSymbol(math, ams, rel, "\u22b5", "\\trianglerighteq");
+defineSymbol(math, ams, rel, "\u22a9", "\\Vdash");
+defineSymbol(math, ams, rel, "\u2223", "\\shortmid");
+defineSymbol(math, ams, rel, "\u2225", "\\shortparallel");
+defineSymbol(math, ams, rel, "\u226c", "\\between");
+defineSymbol(math, ams, rel, "\u22d4", "\\pitchfork");
+defineSymbol(math, ams, rel, "\u221d", "\\varpropto");
+defineSymbol(math, ams, rel, "\u25c0", "\\blacktriangleleft");
+defineSymbol(math, ams, rel, "\u2234", "\\therefore");
+defineSymbol(math, ams, rel, "\u220d", "\\backepsilon");
+defineSymbol(math, ams, rel, "\u25b6", "\\blacktriangleright");
+defineSymbol(math, ams, rel, "\u2235", "\\because");
+defineSymbol(math, ams, rel, "\u22d8", "\\llless");
+defineSymbol(math, ams, rel, "\u22d9", "\\gggtr");
+defineSymbol(math, ams, bin, "\u22b2", "\\lhd");
+defineSymbol(math, ams, bin, "\u22b3", "\\rhd");
+defineSymbol(math, ams, rel, "\u2242", "\\eqsim");
+defineSymbol(math, main, rel, "\u22c8", "\\Join");
+defineSymbol(math, ams, rel, "\u2251", "\\Doteq");
+
+// AMS Binary Operators
+defineSymbol(math, ams, bin, "\u2214", "\\dotplus");
+defineSymbol(math, ams, bin, "\u2216", "\\smallsetminus");
+defineSymbol(math, ams, bin, "\u22d2", "\\Cap");
+defineSymbol(math, ams, bin, "\u22d3", "\\Cup");
+defineSymbol(math, ams, bin, "\u2a5e", "\\doublebarwedge");
+defineSymbol(math, ams, bin, "\u229f", "\\boxminus");
+defineSymbol(math, ams, bin, "\u229e", "\\boxplus");
+defineSymbol(math, ams, bin, "\u22c7", "\\divideontimes");
+defineSymbol(math, ams, bin, "\u22c9", "\\ltimes");
+defineSymbol(math, ams, bin, "\u22ca", "\\rtimes");
+defineSymbol(math, ams, bin, "\u22cb", "\\leftthreetimes");
+defineSymbol(math, ams, bin, "\u22cc", "\\rightthreetimes");
+defineSymbol(math, ams, bin, "\u22cf", "\\curlywedge");
+defineSymbol(math, ams, bin, "\u22ce", "\\curlyvee");
+defineSymbol(math, ams, bin, "\u229d", "\\circleddash");
+defineSymbol(math, ams, bin, "\u229b", "\\circledast");
+defineSymbol(math, ams, bin, "\u22c5", "\\centerdot");
+defineSymbol(math, ams, bin, "\u22ba", "\\intercal");
+defineSymbol(math, ams, bin, "\u22d2", "\\doublecap");
+defineSymbol(math, ams, bin, "\u22d3", "\\doublecup");
+defineSymbol(math, ams, bin, "\u22a0", "\\boxtimes");
+
+// AMS Arrows
+defineSymbol(math, ams, rel, "\u21e2", "\\dashrightarrow");
+defineSymbol(math, ams, rel, "\u21e0", "\\dashleftarrow");
+defineSymbol(math, ams, rel, "\u21c7", "\\leftleftarrows");
+defineSymbol(math, ams, rel, "\u21c6", "\\leftrightarrows");
+defineSymbol(math, ams, rel, "\u21da", "\\Lleftarrow");
+defineSymbol(math, ams, rel, "\u219e", "\\twoheadleftarrow");
+defineSymbol(math, ams, rel, "\u21a2", "\\leftarrowtail");
+defineSymbol(math, ams, rel, "\u21ab", "\\looparrowleft");
+defineSymbol(math, ams, rel, "\u21cb", "\\leftrightharpoons");
+defineSymbol(math, ams, rel, "\u21b6", "\\curvearrowleft");
+defineSymbol(math, ams, rel, "\u21ba", "\\circlearrowleft");
+defineSymbol(math, ams, rel, "\u21b0", "\\Lsh");
+defineSymbol(math, ams, rel, "\u21c8", "\\upuparrows");
+defineSymbol(math, ams, rel, "\u21bf", "\\upharpoonleft");
+defineSymbol(math, ams, rel, "\u21c3", "\\downharpoonleft");
+defineSymbol(math, ams, rel, "\u22b8", "\\multimap");
+defineSymbol(math, ams, rel, "\u21ad", "\\leftrightsquigarrow");
+defineSymbol(math, ams, rel, "\u21c9", "\\rightrightarrows");
+defineSymbol(math, ams, rel, "\u21c4", "\\rightleftarrows");
+defineSymbol(math, ams, rel, "\u21a0", "\\twoheadrightarrow");
+defineSymbol(math, ams, rel, "\u21a3", "\\rightarrowtail");
+defineSymbol(math, ams, rel, "\u21ac", "\\looparrowright");
+defineSymbol(math, ams, rel, "\u21b7", "\\curvearrowright");
+defineSymbol(math, ams, rel, "\u21bb", "\\circlearrowright");
+defineSymbol(math, ams, rel, "\u21b1", "\\Rsh");
+defineSymbol(math, ams, rel, "\u21ca", "\\downdownarrows");
+defineSymbol(math, ams, rel, "\u21be", "\\upharpoonright");
+defineSymbol(math, ams, rel, "\u21c2", "\\downharpoonright");
+defineSymbol(math, ams, rel, "\u21dd", "\\rightsquigarrow");
+defineSymbol(math, ams, rel, "\u21dd", "\\leadsto");
+defineSymbol(math, ams, rel, "\u21db", "\\Rrightarrow");
+defineSymbol(math, ams, rel, "\u21be", "\\restriction");
+
+defineSymbol(math, main, textord, "\u2018", "`");
+defineSymbol(math, main, textord, "$", "\\$");
+defineSymbol(math, main, textord, "%", "\\%");
+defineSymbol(math, main, textord, "_", "\\_");
+defineSymbol(math, main, textord, "\u2220", "\\angle");
+defineSymbol(math, main, textord, "\u221e", "\\infty");
+defineSymbol(math, main, textord, "\u2032", "\\prime");
+defineSymbol(math, main, textord, "\u25b3", "\\triangle");
+defineSymbol(math, main, textord, "\u0393", "\\Gamma");
+defineSymbol(math, main, textord, "\u0394", "\\Delta");
+defineSymbol(math, main, textord, "\u0398", "\\Theta");
+defineSymbol(math, main, textord, "\u039b", "\\Lambda");
+defineSymbol(math, main, textord, "\u039e", "\\Xi");
+defineSymbol(math, main, textord, "\u03a0", "\\Pi");
+defineSymbol(math, main, textord, "\u03a3", "\\Sigma");
+defineSymbol(math, main, textord, "\u03a5", "\\Upsilon");
+defineSymbol(math, main, textord, "\u03a6", "\\Phi");
+defineSymbol(math, main, textord, "\u03a8", "\\Psi");
+defineSymbol(math, main, textord, "\u03a9", "\\Omega");
+defineSymbol(math, main, textord, "\u00ac", "\\neg");
+defineSymbol(math, main, textord, "\u00ac", "\\lnot");
+defineSymbol(math, main, textord, "\u22a4", "\\top");
+defineSymbol(math, main, textord, "\u22a5", "\\bot");
+defineSymbol(math, main, textord, "\u2205", "\\emptyset");
+defineSymbol(math, ams, textord, "\u2205", "\\varnothing");
+defineSymbol(math, main, mathord, "\u03b1", "\\alpha");
+defineSymbol(math, main, mathord, "\u03b2", "\\beta");
+defineSymbol(math, main, mathord, "\u03b3", "\\gamma");
+defineSymbol(math, main, mathord, "\u03b4", "\\delta");
+defineSymbol(math, main, mathord, "\u03f5", "\\epsilon");
+defineSymbol(math, main, mathord, "\u03b6", "\\zeta");
+defineSymbol(math, main, mathord, "\u03b7", "\\eta");
+defineSymbol(math, main, mathord, "\u03b8", "\\theta");
+defineSymbol(math, main, mathord, "\u03b9", "\\iota");
+defineSymbol(math, main, mathord, "\u03ba", "\\kappa");
+defineSymbol(math, main, mathord, "\u03bb", "\\lambda");
+defineSymbol(math, main, mathord, "\u03bc", "\\mu");
+defineSymbol(math, main, mathord, "\u03bd", "\\nu");
+defineSymbol(math, main, mathord, "\u03be", "\\xi");
+defineSymbol(math, main, mathord, "o", "\\omicron");
+defineSymbol(math, main, mathord, "\u03c0", "\\pi");
+defineSymbol(math, main, mathord, "\u03c1", "\\rho");
+defineSymbol(math, main, mathord, "\u03c3", "\\sigma");
+defineSymbol(math, main, mathord, "\u03c4", "\\tau");
+defineSymbol(math, main, mathord, "\u03c5", "\\upsilon");
+defineSymbol(math, main, mathord, "\u03d5", "\\phi");
+defineSymbol(math, main, mathord, "\u03c7", "\\chi");
+defineSymbol(math, main, mathord, "\u03c8", "\\psi");
+defineSymbol(math, main, mathord, "\u03c9", "\\omega");
+defineSymbol(math, main, mathord, "\u03b5", "\\varepsilon");
+defineSymbol(math, main, mathord, "\u03d1", "\\vartheta");
+defineSymbol(math, main, mathord, "\u03d6", "\\varpi");
+defineSymbol(math, main, mathord, "\u03f1", "\\varrho");
+defineSymbol(math, main, mathord, "\u03c2", "\\varsigma");
+defineSymbol(math, main, mathord, "\u03c6", "\\varphi");
+defineSymbol(math, main, bin, "\u2217", "*");
+defineSymbol(math, main, bin, "+", "+");
+defineSymbol(math, main, bin, "\u2212", "-");
+defineSymbol(math, main, bin, "\u22c5", "\\cdot");
+defineSymbol(math, main, bin, "\u2218", "\\circ");
+defineSymbol(math, main, bin, "\u00f7", "\\div");
+defineSymbol(math, main, bin, "\u00b1", "\\pm");
+defineSymbol(math, main, bin, "\u00d7", "\\times");
+defineSymbol(math, main, bin, "\u2229", "\\cap");
+defineSymbol(math, main, bin, "\u222a", "\\cup");
+defineSymbol(math, main, bin, "\u2216", "\\setminus");
+defineSymbol(math, main, bin, "\u2227", "\\land");
+defineSymbol(math, main, bin, "\u2228", "\\lor");
+defineSymbol(math, main, bin, "\u2227", "\\wedge");
+defineSymbol(math, main, bin, "\u2228", "\\vee");
+defineSymbol(math, main, textord, "\u221a", "\\surd");
+defineSymbol(math, main, open, "(", "(");
+defineSymbol(math, main, open, "[", "[");
+defineSymbol(math, main, open, "\u27e8", "\\langle");
+defineSymbol(math, main, open, "\u2223", "\\lvert");
+defineSymbol(math, main, open, "\u2225", "\\lVert");
+defineSymbol(math, main, close, ")", ")");
+defineSymbol(math, main, close, "]", "]");
+defineSymbol(math, main, close, "?", "?");
+defineSymbol(math, main, close, "!", "!");
+defineSymbol(math, main, close, "\u27e9", "\\rangle");
+defineSymbol(math, main, close, "\u2223", "\\rvert");
+defineSymbol(math, main, close, "\u2225", "\\rVert");
+defineSymbol(math, main, rel, "=", "=");
+defineSymbol(math, main, rel, "<", "<");
+defineSymbol(math, main, rel, ">", ">");
+defineSymbol(math, main, rel, ":", ":");
+defineSymbol(math, main, rel, "\u2248", "\\approx");
+defineSymbol(math, main, rel, "\u2245", "\\cong");
+defineSymbol(math, main, rel, "\u2265", "\\ge");
+defineSymbol(math, main, rel, "\u2265", "\\geq");
+defineSymbol(math, main, rel, "\u2190", "\\gets");
+defineSymbol(math, main, rel, ">", "\\gt");
+defineSymbol(math, main, rel, "\u2208", "\\in");
+defineSymbol(math, main, rel, "\u2209", "\\notin");
+defineSymbol(math, main, rel, "\u2282", "\\subset");
+defineSymbol(math, main, rel, "\u2283", "\\supset");
+defineSymbol(math, main, rel, "\u2286", "\\subseteq");
+defineSymbol(math, main, rel, "\u2287", "\\supseteq");
+defineSymbol(math, ams, rel, "\u2288", "\\nsubseteq");
+defineSymbol(math, ams, rel, "\u2289", "\\nsupseteq");
+defineSymbol(math, main, rel, "\u22a8", "\\models");
+defineSymbol(math, main, rel, "\u2190", "\\leftarrow");
+defineSymbol(math, main, rel, "\u2264", "\\le");
+defineSymbol(math, main, rel, "\u2264", "\\leq");
+defineSymbol(math, main, rel, "<", "\\lt");
+defineSymbol(math, main, rel, "\u2260", "\\ne");
+defineSymbol(math, main, rel, "\u2260", "\\neq");
+defineSymbol(math, main, rel, "\u2192", "\\rightarrow");
+defineSymbol(math, main, rel, "\u2192", "\\to");
+defineSymbol(math, ams, rel, "\u2271", "\\ngeq");
+defineSymbol(math, ams, rel, "\u2270", "\\nleq");
+defineSymbol(math, main, spacing, null, "\\!");
+defineSymbol(math, main, spacing, "\u00a0", "\\ ");
+defineSymbol(math, main, spacing, "\u00a0", "~");
+defineSymbol(math, main, spacing, null, "\\,");
+defineSymbol(math, main, spacing, null, "\\:");
+defineSymbol(math, main, spacing, null, "\\;");
+defineSymbol(math, main, spacing, null, "\\enspace");
+defineSymbol(math, main, spacing, null, "\\qquad");
+defineSymbol(math, main, spacing, null, "\\quad");
+defineSymbol(math, main, spacing, "\u00a0", "\\space");
+defineSymbol(math, main, punct, ",", ",");
+defineSymbol(math, main, punct, ";", ";");
+defineSymbol(math, main, punct, ":", "\\colon");
+defineSymbol(math, ams, bin, "\u22bc", "\\barwedge");
+defineSymbol(math, ams, bin, "\u22bb", "\\veebar");
+defineSymbol(math, main, bin, "\u2299", "\\odot");
+defineSymbol(math, main, bin, "\u2295", "\\oplus");
+defineSymbol(math, main, bin, "\u2297", "\\otimes");
+defineSymbol(math, main, textord, "\u2202", "\\partial");
+defineSymbol(math, main, bin, "\u2298", "\\oslash");
+defineSymbol(math, ams, bin, "\u229a", "\\circledcirc");
+defineSymbol(math, ams, bin, "\u22a1", "\\boxdot");
+defineSymbol(math, main, bin, "\u25b3", "\\bigtriangleup");
+defineSymbol(math, main, bin, "\u25bd", "\\bigtriangledown");
+defineSymbol(math, main, bin, "\u2020", "\\dagger");
+defineSymbol(math, main, bin, "\u22c4", "\\diamond");
+defineSymbol(math, main, bin, "\u22c6", "\\star");
+defineSymbol(math, main, bin, "\u25c3", "\\triangleleft");
+defineSymbol(math, main, bin, "\u25b9", "\\triangleright");
+defineSymbol(math, main, open, "{", "\\{");
+defineSymbol(math, main, close, "}", "\\}");
+defineSymbol(math, main, open, "{", "\\lbrace");
+defineSymbol(math, main, close, "}", "\\rbrace");
+defineSymbol(math, main, open, "[", "\\lbrack");
+defineSymbol(math, main, close, "]", "\\rbrack");
+defineSymbol(math, main, open, "\u230a", "\\lfloor");
+defineSymbol(math, main, close, "\u230b", "\\rfloor");
+defineSymbol(math, main, open, "\u2308", "\\lceil");
+defineSymbol(math, main, close, "\u2309", "\\rceil");
+defineSymbol(math, main, textord, "\\", "\\backslash");
+defineSymbol(math, main, textord, "\u2223", "|");
+defineSymbol(math, main, textord, "\u2223", "\\vert");
+defineSymbol(math, main, textord, "\u2225", "\\|");
+defineSymbol(math, main, textord, "\u2225", "\\Vert");
+defineSymbol(math, main, rel, "\u2191", "\\uparrow");
+defineSymbol(math, main, rel, "\u21d1", "\\Uparrow");
+defineSymbol(math, main, rel, "\u2193", "\\downarrow");
+defineSymbol(math, main, rel, "\u21d3", "\\Downarrow");
+defineSymbol(math, main, rel, "\u2195", "\\updownarrow");
+defineSymbol(math, main, rel, "\u21d5", "\\Updownarrow");
+defineSymbol(math, math, op, "\u2210", "\\coprod");
+defineSymbol(math, math, op, "\u22c1", "\\bigvee");
+defineSymbol(math, math, op, "\u22c0", "\\bigwedge");
+defineSymbol(math, math, op, "\u2a04", "\\biguplus");
+defineSymbol(math, math, op, "\u22c2", "\\bigcap");
+defineSymbol(math, math, op, "\u22c3", "\\bigcup");
+defineSymbol(math, math, op, "\u222b", "\\int");
+defineSymbol(math, math, op, "\u222b", "\\intop");
+defineSymbol(math, math, op, "\u222c", "\\iint");
+defineSymbol(math, math, op, "\u222d", "\\iiint");
+defineSymbol(math, math, op, "\u220f", "\\prod");
+defineSymbol(math, math, op, "\u2211", "\\sum");
+defineSymbol(math, math, op, "\u2a02", "\\bigotimes");
+defineSymbol(math, math, op, "\u2a01", "\\bigoplus");
+defineSymbol(math, math, op, "\u2a00", "\\bigodot");
+defineSymbol(math, math, op, "\u222e", "\\oint");
+defineSymbol(math, math, op, "\u2a06", "\\bigsqcup");
+defineSymbol(math, math, op, "\u222b", "\\smallint");
+defineSymbol(math, main, inner, "\u2026", "\\ldots");
+defineSymbol(math, main, inner, "\u22ef", "\\cdots");
+defineSymbol(math, main, inner, "\u22f1", "\\ddots");
+defineSymbol(math, main, textord, "\u22ee", "\\vdots");
+defineSymbol(math, main, accent, "\u00b4", "\\acute");
+defineSymbol(math, main, accent, "\u0060", "\\grave");
+defineSymbol(math, main, accent, "\u00a8", "\\ddot");
+defineSymbol(math, main, accent, "\u007e", "\\tilde");
+defineSymbol(math, main, accent, "\u00af", "\\bar");
+defineSymbol(math, main, accent, "\u02d8", "\\breve");
+defineSymbol(math, main, accent, "\u02c7", "\\check");
+defineSymbol(math, main, accent, "\u005e", "\\hat");
+defineSymbol(math, main, accent, "\u20d7", "\\vec");
+defineSymbol(math, main, accent, "\u02d9", "\\dot");
+defineSymbol(math, main, mathord, "\u0131", "\\imath");
+defineSymbol(math, main, mathord, "\u0237", "\\jmath");
+
+defineSymbol(text, main, spacing, "\u00a0", "\\ ");
+defineSymbol(text, main, spacing, "\u00a0", " ");
+defineSymbol(text, main, spacing, "\u00a0", "~");
+
+// There are lots of symbols which are the same, so we add them in afterwards.
+var i;
+var ch;
+
+// All of these are textords in math mode
+var mathTextSymbols = "0123456789/@.\"";
+for (i = 0; i < mathTextSymbols.length; i++) {
+    ch = mathTextSymbols.charAt(i);
+    defineSymbol(math, main, textord, ch, ch);
+}
+
+// All of these are textords in text mode
+var textSymbols = "0123456789`!@*()-=+[]'\";:?/.,";
+for (i = 0; i < textSymbols.length; i++) {
+    ch = textSymbols.charAt(i);
+    defineSymbol(text, main, textord, ch, ch);
+}
+
+// All of these are textords in text mode, and mathords in math mode
+var letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+for (i = 0; i < letters.length; i++) {
+    ch = letters.charAt(i);
+    defineSymbol(math, main, mathord, ch, ch);
+    defineSymbol(text, main, textord, ch, ch);
+}
+
+
+/***/ }),
+/* 24 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 /* WEBPACK VAR INJECTION */(function(process) {
 
-var utils = __webpack_require__(4);
-var normalizeHeaderName = __webpack_require__(149);
+var utils = __webpack_require__(5);
+var normalizeHeaderName = __webpack_require__(201);
 
 var DEFAULT_CONTENT_TYPE = {
   'Content-Type': 'application/x-www-form-urlencoded'
@@ -5377,10 +7420,10 @@ function getDefaultAdapter() {
   var adapter;
   if (typeof XMLHttpRequest !== 'undefined') {
     // For browsers use XHR adapter
-    adapter = __webpack_require__(10);
+    adapter = __webpack_require__(38);
   } else if (typeof process !== 'undefined') {
     // For node use HTTP adapter
-    adapter = __webpack_require__(10);
+    adapter = __webpack_require__(38);
   }
   return adapter;
 }
@@ -5451,10 +7494,724 @@ utils.forEach(['post', 'put', 'patch'], function forEachMethodWithData(method) {
 
 module.exports = defaults;
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(9)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(37)))
 
 /***/ }),
-/* 8 */
+/* 25 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// to indexed object, toObject with fallback for non-array-like ES3 strings
+var IObject = __webpack_require__(303);
+var defined = __webpack_require__(26);
+module.exports = function (it) {
+  return IObject(defined(it));
+};
+
+
+/***/ }),
+/* 26 */
+/***/ (function(module, exports) {
+
+// 7.2.1 RequireObjectCoercible(argument)
+module.exports = function (it) {
+  if (it == undefined) throw TypeError("Can't call method on  " + it);
+  return it;
+};
+
+
+/***/ }),
+/* 27 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var anObject = __webpack_require__(16);
+var IE8_DOM_DEFINE = __webpack_require__(307);
+var toPrimitive = __webpack_require__(308);
+var dP = Object.defineProperty;
+
+exports.f = __webpack_require__(17) ? Object.defineProperty : function defineProperty(O, P, Attributes) {
+  anObject(O);
+  P = toPrimitive(P, true);
+  anObject(Attributes);
+  if (IE8_DOM_DEFINE) try {
+    return dP(O, P, Attributes);
+  } catch (e) { /* empty */ }
+  if ('get' in Attributes || 'set' in Attributes) throw TypeError('Accessors not supported!');
+  if ('value' in Attributes) O[P] = Attributes.value;
+  return O;
+};
+
+
+/***/ }),
+/* 28 */
+/***/ (function(module, exports) {
+
+module.exports = function (it) {
+  return typeof it === 'object' ? it !== null : typeof it === 'function';
+};
+
+
+/***/ }),
+/* 29 */
+/***/ (function(module, exports) {
+
+module.exports = function (exec) {
+  try {
+    return !!exec();
+  } catch (e) {
+    return true;
+  }
+};
+
+
+/***/ }),
+/* 30 */
+/***/ (function(module, exports) {
+
+// 7.1.4 ToInteger
+var ceil = Math.ceil;
+var floor = Math.floor;
+module.exports = function (it) {
+  return isNaN(it = +it) ? 0 : (it > 0 ? floor : ceil)(it);
+};
+
+
+/***/ }),
+/* 31 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var shared = __webpack_require__(175)('keys');
+var uid = __webpack_require__(176);
+module.exports = function (key) {
+  return shared[key] || (shared[key] = uid(key));
+};
+
+
+/***/ }),
+/* 32 */
+/***/ (function(module, exports) {
+
+module.exports=/[!-#%-\*,-/:;\?@\[-\]_\{\}\xA1\xA7\xAB\xB6\xB7\xBB\xBF\u037E\u0387\u055A-\u055F\u0589\u058A\u05BE\u05C0\u05C3\u05C6\u05F3\u05F4\u0609\u060A\u060C\u060D\u061B\u061E\u061F\u066A-\u066D\u06D4\u0700-\u070D\u07F7-\u07F9\u0830-\u083E\u085E\u0964\u0965\u0970\u09FD\u0AF0\u0DF4\u0E4F\u0E5A\u0E5B\u0F04-\u0F12\u0F14\u0F3A-\u0F3D\u0F85\u0FD0-\u0FD4\u0FD9\u0FDA\u104A-\u104F\u10FB\u1360-\u1368\u1400\u166D\u166E\u169B\u169C\u16EB-\u16ED\u1735\u1736\u17D4-\u17D6\u17D8-\u17DA\u1800-\u180A\u1944\u1945\u1A1E\u1A1F\u1AA0-\u1AA6\u1AA8-\u1AAD\u1B5A-\u1B60\u1BFC-\u1BFF\u1C3B-\u1C3F\u1C7E\u1C7F\u1CC0-\u1CC7\u1CD3\u2010-\u2027\u2030-\u2043\u2045-\u2051\u2053-\u205E\u207D\u207E\u208D\u208E\u2308-\u230B\u2329\u232A\u2768-\u2775\u27C5\u27C6\u27E6-\u27EF\u2983-\u2998\u29D8-\u29DB\u29FC\u29FD\u2CF9-\u2CFC\u2CFE\u2CFF\u2D70\u2E00-\u2E2E\u2E30-\u2E49\u3001-\u3003\u3008-\u3011\u3014-\u301F\u3030\u303D\u30A0\u30FB\uA4FE\uA4FF\uA60D-\uA60F\uA673\uA67E\uA6F2-\uA6F7\uA874-\uA877\uA8CE\uA8CF\uA8F8-\uA8FA\uA8FC\uA92E\uA92F\uA95F\uA9C1-\uA9CD\uA9DE\uA9DF\uAA5C-\uAA5F\uAADE\uAADF\uAAF0\uAAF1\uABEB\uFD3E\uFD3F\uFE10-\uFE19\uFE30-\uFE52\uFE54-\uFE61\uFE63\uFE68\uFE6A\uFE6B\uFF01-\uFF03\uFF05-\uFF0A\uFF0C-\uFF0F\uFF1A\uFF1B\uFF1F\uFF20\uFF3B-\uFF3D\uFF3F\uFF5B\uFF5D\uFF5F-\uFF65]|\uD800[\uDD00-\uDD02\uDF9F\uDFD0]|\uD801\uDD6F|\uD802[\uDC57\uDD1F\uDD3F\uDE50-\uDE58\uDE7F\uDEF0-\uDEF6\uDF39-\uDF3F\uDF99-\uDF9C]|\uD804[\uDC47-\uDC4D\uDCBB\uDCBC\uDCBE-\uDCC1\uDD40-\uDD43\uDD74\uDD75\uDDC5-\uDDC9\uDDCD\uDDDB\uDDDD-\uDDDF\uDE38-\uDE3D\uDEA9]|\uD805[\uDC4B-\uDC4F\uDC5B\uDC5D\uDCC6\uDDC1-\uDDD7\uDE41-\uDE43\uDE60-\uDE6C\uDF3C-\uDF3E]|\uD806[\uDE3F-\uDE46\uDE9A-\uDE9C\uDE9E-\uDEA2]|\uD807[\uDC41-\uDC45\uDC70\uDC71]|\uD809[\uDC70-\uDC74]|\uD81A[\uDE6E\uDE6F\uDEF5\uDF37-\uDF3B\uDF44]|\uD82F\uDC9F|\uD836[\uDE87-\uDE8B]|\uD83A[\uDD5E\uDD5F]/
+
+/***/ }),
+/* 33 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// Parse link label
+//
+// this function assumes that first character ("[") already matches;
+// returns the end of the label
+//
+
+
+module.exports = function parseLinkLabel(state, start, disableNested) {
+  var level, found, marker, prevPos,
+      labelEnd = -1,
+      max = state.posMax,
+      oldPos = state.pos;
+
+  state.pos = start + 1;
+  level = 1;
+
+  while (state.pos < max) {
+    marker = state.src.charCodeAt(state.pos);
+    if (marker === 0x5D /* ] */) {
+      level--;
+      if (level === 0) {
+        found = true;
+        break;
+      }
+    }
+
+    prevPos = state.pos;
+    state.md.inline.skipToken(state);
+    if (marker === 0x5B /* [ */) {
+      if (prevPos === state.pos - 1) {
+        // increase level if we find text `[`, which is not a part of any token
+        level++;
+      } else if (disableNested) {
+        state.pos = oldPos;
+        return -1;
+      }
+    }
+  }
+
+  if (found) {
+    labelEnd = state.pos;
+  }
+
+  // restore old state
+  state.pos = oldPos;
+
+  return labelEnd;
+};
+
+
+/***/ }),
+/* 34 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/**
+ * class Ruler
+ *
+ * Helper class, used by [[MarkdownIt#core]], [[MarkdownIt#block]] and
+ * [[MarkdownIt#inline]] to manage sequences of functions (rules):
+ *
+ * - keep rules in defined order
+ * - assign the name to each rule
+ * - enable/disable rules
+ * - add/replace rules
+ * - allow assign rules to additional named chains (in the same)
+ * - cacheing lists of active rules
+ *
+ * You will not need use this class directly until write plugins. For simple
+ * rules control use [[MarkdownIt.disable]], [[MarkdownIt.enable]] and
+ * [[MarkdownIt.use]].
+ **/
+
+
+
+/**
+ * new Ruler()
+ **/
+function Ruler() {
+  // List of added rules. Each element is:
+  //
+  // {
+  //   name: XXX,
+  //   enabled: Boolean,
+  //   fn: Function(),
+  //   alt: [ name2, name3 ]
+  // }
+  //
+  this.__rules__ = [];
+
+  // Cached rule chains.
+  //
+  // First level - chain name, '' for default.
+  // Second level - diginal anchor for fast filtering by charcodes.
+  //
+  this.__cache__ = null;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Helper methods, should not be used directly
+
+
+// Find rule index by name
+//
+Ruler.prototype.__find__ = function (name) {
+  for (var i = 0; i < this.__rules__.length; i++) {
+    if (this.__rules__[i].name === name) {
+      return i;
+    }
+  }
+  return -1;
+};
+
+
+// Build rules lookup cache
+//
+Ruler.prototype.__compile__ = function () {
+  var self = this;
+  var chains = [ '' ];
+
+  // collect unique names
+  self.__rules__.forEach(function (rule) {
+    if (!rule.enabled) { return; }
+
+    rule.alt.forEach(function (altName) {
+      if (chains.indexOf(altName) < 0) {
+        chains.push(altName);
+      }
+    });
+  });
+
+  self.__cache__ = {};
+
+  chains.forEach(function (chain) {
+    self.__cache__[chain] = [];
+    self.__rules__.forEach(function (rule) {
+      if (!rule.enabled) { return; }
+
+      if (chain && rule.alt.indexOf(chain) < 0) { return; }
+
+      self.__cache__[chain].push(rule.fn);
+    });
+  });
+};
+
+
+/**
+ * Ruler.at(name, fn [, options])
+ * - name (String): rule name to replace.
+ * - fn (Function): new rule function.
+ * - options (Object): new rule options (not mandatory).
+ *
+ * Replace rule by name with new function & options. Throws error if name not
+ * found.
+ *
+ * ##### Options:
+ *
+ * - __alt__ - array with names of "alternate" chains.
+ *
+ * ##### Example
+ *
+ * Replace existing typorgapher replacement rule with new one:
+ *
+ * ```javascript
+ * var md = require('markdown-it')();
+ *
+ * md.core.ruler.at('replacements', function replace(state) {
+ *   //...
+ * });
+ * ```
+ **/
+Ruler.prototype.at = function (name, fn, options) {
+  var index = this.__find__(name);
+  var opt = options || {};
+
+  if (index === -1) { throw new Error('Parser rule not found: ' + name); }
+
+  this.__rules__[index].fn = fn;
+  this.__rules__[index].alt = opt.alt || [];
+  this.__cache__ = null;
+};
+
+
+/**
+ * Ruler.before(beforeName, ruleName, fn [, options])
+ * - beforeName (String): new rule will be added before this one.
+ * - ruleName (String): name of added rule.
+ * - fn (Function): rule function.
+ * - options (Object): rule options (not mandatory).
+ *
+ * Add new rule to chain before one with given name. See also
+ * [[Ruler.after]], [[Ruler.push]].
+ *
+ * ##### Options:
+ *
+ * - __alt__ - array with names of "alternate" chains.
+ *
+ * ##### Example
+ *
+ * ```javascript
+ * var md = require('markdown-it')();
+ *
+ * md.block.ruler.before('paragraph', 'my_rule', function replace(state) {
+ *   //...
+ * });
+ * ```
+ **/
+Ruler.prototype.before = function (beforeName, ruleName, fn, options) {
+  var index = this.__find__(beforeName);
+  var opt = options || {};
+
+  if (index === -1) { throw new Error('Parser rule not found: ' + beforeName); }
+
+  this.__rules__.splice(index, 0, {
+    name: ruleName,
+    enabled: true,
+    fn: fn,
+    alt: opt.alt || []
+  });
+
+  this.__cache__ = null;
+};
+
+
+/**
+ * Ruler.after(afterName, ruleName, fn [, options])
+ * - afterName (String): new rule will be added after this one.
+ * - ruleName (String): name of added rule.
+ * - fn (Function): rule function.
+ * - options (Object): rule options (not mandatory).
+ *
+ * Add new rule to chain after one with given name. See also
+ * [[Ruler.before]], [[Ruler.push]].
+ *
+ * ##### Options:
+ *
+ * - __alt__ - array with names of "alternate" chains.
+ *
+ * ##### Example
+ *
+ * ```javascript
+ * var md = require('markdown-it')();
+ *
+ * md.inline.ruler.after('text', 'my_rule', function replace(state) {
+ *   //...
+ * });
+ * ```
+ **/
+Ruler.prototype.after = function (afterName, ruleName, fn, options) {
+  var index = this.__find__(afterName);
+  var opt = options || {};
+
+  if (index === -1) { throw new Error('Parser rule not found: ' + afterName); }
+
+  this.__rules__.splice(index + 1, 0, {
+    name: ruleName,
+    enabled: true,
+    fn: fn,
+    alt: opt.alt || []
+  });
+
+  this.__cache__ = null;
+};
+
+/**
+ * Ruler.push(ruleName, fn [, options])
+ * - ruleName (String): name of added rule.
+ * - fn (Function): rule function.
+ * - options (Object): rule options (not mandatory).
+ *
+ * Push new rule to the end of chain. See also
+ * [[Ruler.before]], [[Ruler.after]].
+ *
+ * ##### Options:
+ *
+ * - __alt__ - array with names of "alternate" chains.
+ *
+ * ##### Example
+ *
+ * ```javascript
+ * var md = require('markdown-it')();
+ *
+ * md.core.ruler.push('my_rule', function replace(state) {
+ *   //...
+ * });
+ * ```
+ **/
+Ruler.prototype.push = function (ruleName, fn, options) {
+  var opt = options || {};
+
+  this.__rules__.push({
+    name: ruleName,
+    enabled: true,
+    fn: fn,
+    alt: opt.alt || []
+  });
+
+  this.__cache__ = null;
+};
+
+
+/**
+ * Ruler.enable(list [, ignoreInvalid]) -> Array
+ * - list (String|Array): list of rule names to enable.
+ * - ignoreInvalid (Boolean): set `true` to ignore errors when rule not found.
+ *
+ * Enable rules with given names. If any rule name not found - throw Error.
+ * Errors can be disabled by second param.
+ *
+ * Returns list of found rule names (if no exception happened).
+ *
+ * See also [[Ruler.disable]], [[Ruler.enableOnly]].
+ **/
+Ruler.prototype.enable = function (list, ignoreInvalid) {
+  if (!Array.isArray(list)) { list = [ list ]; }
+
+  var result = [];
+
+  // Search by name and enable
+  list.forEach(function (name) {
+    var idx = this.__find__(name);
+
+    if (idx < 0) {
+      if (ignoreInvalid) { return; }
+      throw new Error('Rules manager: invalid rule name ' + name);
+    }
+    this.__rules__[idx].enabled = true;
+    result.push(name);
+  }, this);
+
+  this.__cache__ = null;
+  return result;
+};
+
+
+/**
+ * Ruler.enableOnly(list [, ignoreInvalid])
+ * - list (String|Array): list of rule names to enable (whitelist).
+ * - ignoreInvalid (Boolean): set `true` to ignore errors when rule not found.
+ *
+ * Enable rules with given names, and disable everything else. If any rule name
+ * not found - throw Error. Errors can be disabled by second param.
+ *
+ * See also [[Ruler.disable]], [[Ruler.enable]].
+ **/
+Ruler.prototype.enableOnly = function (list, ignoreInvalid) {
+  if (!Array.isArray(list)) { list = [ list ]; }
+
+  this.__rules__.forEach(function (rule) { rule.enabled = false; });
+
+  this.enable(list, ignoreInvalid);
+};
+
+
+/**
+ * Ruler.disable(list [, ignoreInvalid]) -> Array
+ * - list (String|Array): list of rule names to disable.
+ * - ignoreInvalid (Boolean): set `true` to ignore errors when rule not found.
+ *
+ * Disable rules with given names. If any rule name not found - throw Error.
+ * Errors can be disabled by second param.
+ *
+ * Returns list of found rule names (if no exception happened).
+ *
+ * See also [[Ruler.enable]], [[Ruler.enableOnly]].
+ **/
+Ruler.prototype.disable = function (list, ignoreInvalid) {
+  if (!Array.isArray(list)) { list = [ list ]; }
+
+  var result = [];
+
+  // Search by name and disable
+  list.forEach(function (name) {
+    var idx = this.__find__(name);
+
+    if (idx < 0) {
+      if (ignoreInvalid) { return; }
+      throw new Error('Rules manager: invalid rule name ' + name);
+    }
+    this.__rules__[idx].enabled = false;
+    result.push(name);
+  }, this);
+
+  this.__cache__ = null;
+  return result;
+};
+
+
+/**
+ * Ruler.getRules(chainName) -> Array
+ *
+ * Return array of active functions (rules) for given chain name. It analyzes
+ * rules configuration, compiles caches if not exists and returns result.
+ *
+ * Default chain name is `''` (empty string). It can't be skipped. That's
+ * done intentionally, to keep signature monomorphic for high speed.
+ **/
+Ruler.prototype.getRules = function (chainName) {
+  if (this.__cache__ === null) {
+    this.__compile__();
+  }
+
+  // Chain can be empty, if rules disabled. But we still have to return Array.
+  return this.__cache__[chainName] || [];
+};
+
+module.exports = Ruler;
+
+
+/***/ }),
+/* 35 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// Token class
+
+
+
+
+/**
+ * class Token
+ **/
+
+/**
+ * new Token(type, tag, nesting)
+ *
+ * Create new token and fill passed properties.
+ **/
+function Token(type, tag, nesting) {
+  /**
+   * Token#type -> String
+   *
+   * Type of the token (string, e.g. "paragraph_open")
+   **/
+  this.type     = type;
+
+  /**
+   * Token#tag -> String
+   *
+   * html tag name, e.g. "p"
+   **/
+  this.tag      = tag;
+
+  /**
+   * Token#attrs -> Array
+   *
+   * Html attributes. Format: `[ [ name1, value1 ], [ name2, value2 ] ]`
+   **/
+  this.attrs    = null;
+
+  /**
+   * Token#map -> Array
+   *
+   * Source map info. Format: `[ line_begin, line_end ]`
+   **/
+  this.map      = null;
+
+  /**
+   * Token#nesting -> Number
+   *
+   * Level change (number in {-1, 0, 1} set), where:
+   *
+   * -  `1` means the tag is opening
+   * -  `0` means the tag is self-closing
+   * - `-1` means the tag is closing
+   **/
+  this.nesting  = nesting;
+
+  /**
+   * Token#level -> Number
+   *
+   * nesting level, the same as `state.level`
+   **/
+  this.level    = 0;
+
+  /**
+   * Token#children -> Array
+   *
+   * An array of child nodes (inline and img tokens)
+   **/
+  this.children = null;
+
+  /**
+   * Token#content -> String
+   *
+   * In a case of self-closing tag (code, html, fence, etc.),
+   * it has contents of this tag.
+   **/
+  this.content  = '';
+
+  /**
+   * Token#markup -> String
+   *
+   * '*' or '_' for emphasis, fence string for fence, etc.
+   **/
+  this.markup   = '';
+
+  /**
+   * Token#info -> String
+   *
+   * fence infostring
+   **/
+  this.info     = '';
+
+  /**
+   * Token#meta -> Object
+   *
+   * A place for plugins to store an arbitrary data
+   **/
+  this.meta     = null;
+
+  /**
+   * Token#block -> Boolean
+   *
+   * True for block-level tokens, false for inline tokens.
+   * Used in renderer to calculate line breaks
+   **/
+  this.block    = false;
+
+  /**
+   * Token#hidden -> Boolean
+   *
+   * If it's true, ignore this element when rendering. Used for tight lists
+   * to hide paragraphs.
+   **/
+  this.hidden   = false;
+}
+
+
+/**
+ * Token.attrIndex(name) -> Number
+ *
+ * Search attribute index by name.
+ **/
+Token.prototype.attrIndex = function attrIndex(name) {
+  var attrs, i, len;
+
+  if (!this.attrs) { return -1; }
+
+  attrs = this.attrs;
+
+  for (i = 0, len = attrs.length; i < len; i++) {
+    if (attrs[i][0] === name) { return i; }
+  }
+  return -1;
+};
+
+
+/**
+ * Token.attrPush(attrData)
+ *
+ * Add `[ name, value ]` attribute to list. Init attrs if necessary
+ **/
+Token.prototype.attrPush = function attrPush(attrData) {
+  if (this.attrs) {
+    this.attrs.push(attrData);
+  } else {
+    this.attrs = [ attrData ];
+  }
+};
+
+
+/**
+ * Token.attrSet(name, value)
+ *
+ * Set `name` attribute to `value`. Override old value if exists.
+ **/
+Token.prototype.attrSet = function attrSet(name, value) {
+  var idx = this.attrIndex(name),
+      attrData = [ name, value ];
+
+  if (idx < 0) {
+    this.attrPush(attrData);
+  } else {
+    this.attrs[idx] = attrData;
+  }
+};
+
+
+/**
+ * Token.attrGet(name)
+ *
+ * Get the value of attribute `name`, or null if it does not exist.
+ **/
+Token.prototype.attrGet = function attrGet(name) {
+  var idx = this.attrIndex(name), value = null;
+  if (idx >= 0) {
+    value = this.attrs[idx][1];
+  }
+  return value;
+};
+
+
+/**
+ * Token.attrJoin(name, value)
+ *
+ * Join value to existing attribute via space. Or create new attribute if not
+ * exists. Useful to operate with token classes.
+ **/
+Token.prototype.attrJoin = function attrJoin(name, value) {
+  var idx = this.attrIndex(name);
+
+  if (idx < 0) {
+    this.attrPush([ name, value ]);
+  } else {
+    this.attrs[idx][1] = this.attrs[idx][1] + ' ' + value;
+  }
+};
+
+
+module.exports = Token;
+
+
+/***/ }),
+/* 36 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5472,7 +8229,7 @@ module.exports = function bind(fn, thisArg) {
 
 
 /***/ }),
-/* 9 */
+/* 37 */
 /***/ (function(module, exports) {
 
 // shim for using process in browser
@@ -5662,19 +8419,19 @@ process.umask = function() { return 0; };
 
 
 /***/ }),
-/* 10 */
+/* 38 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
-var settle = __webpack_require__(150);
-var buildURL = __webpack_require__(152);
-var parseHeaders = __webpack_require__(153);
-var isURLSameOrigin = __webpack_require__(154);
-var createError = __webpack_require__(11);
-var btoa = (typeof window !== 'undefined' && window.btoa && window.btoa.bind(window)) || __webpack_require__(155);
+var utils = __webpack_require__(5);
+var settle = __webpack_require__(202);
+var buildURL = __webpack_require__(204);
+var parseHeaders = __webpack_require__(205);
+var isURLSameOrigin = __webpack_require__(206);
+var createError = __webpack_require__(39);
+var btoa = (typeof window !== 'undefined' && window.btoa && window.btoa.bind(window)) || __webpack_require__(207);
 
 module.exports = function xhrAdapter(config) {
   return new Promise(function dispatchXhrRequest(resolve, reject) {
@@ -5771,7 +8528,7 @@ module.exports = function xhrAdapter(config) {
     // This is only done if running in a standard browser environment.
     // Specifically not if we're in a web worker, or react-native.
     if (utils.isStandardBrowserEnv()) {
-      var cookies = __webpack_require__(156);
+      var cookies = __webpack_require__(208);
 
       // Add xsrf header
       var xsrfValue = (config.withCredentials || isURLSameOrigin(config.url)) && config.xsrfCookieName ?
@@ -5849,13 +8606,13 @@ module.exports = function xhrAdapter(config) {
 
 
 /***/ }),
-/* 11 */
+/* 39 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var enhanceError = __webpack_require__(151);
+var enhanceError = __webpack_require__(203);
 
 /**
  * Create an Error with the specified message, config, error code, request and response.
@@ -5874,7 +8631,7 @@ module.exports = function createError(message, config, code, request, response) 
 
 
 /***/ }),
-/* 12 */
+/* 40 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5886,7 +8643,7 @@ module.exports = function isCancel(value) {
 
 
 /***/ }),
-/* 13 */
+/* 41 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5912,7 +8669,7 @@ module.exports = Cancel;
 
 
 /***/ }),
-/* 14 */
+/* 42 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -16608,20 +19365,379 @@ Vue$3.compile = compileToFunctions;
 
 module.exports = Vue$3;
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(5), __webpack_require__(164).setImmediate))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(10), __webpack_require__(216).setImmediate))
 
 /***/ }),
-/* 15 */
+/* 43 */
+/***/ (function(module, exports, __webpack_require__) {
+
+/*
+	MIT License http://www.opensource.org/licenses/mit-license.php
+	Author Tobias Koppers @sokra
+*/
+
+var stylesInDom = {};
+
+var	memoize = function (fn) {
+	var memo;
+
+	return function () {
+		if (typeof memo === "undefined") memo = fn.apply(this, arguments);
+		return memo;
+	};
+};
+
+var isOldIE = memoize(function () {
+	// Test for IE <= 9 as proposed by Browserhacks
+	// @see http://browserhacks.com/#hack-e71d8692f65334173fee715c222cb805
+	// Tests for existence of standard globals is to allow style-loader
+	// to operate correctly into non-standard environments
+	// @see https://github.com/webpack-contrib/style-loader/issues/177
+	return window && document && document.all && !window.atob;
+});
+
+var getElement = (function (fn) {
+	var memo = {};
+
+	return function(selector) {
+		if (typeof memo[selector] === "undefined") {
+			memo[selector] = fn.call(this, selector);
+		}
+
+		return memo[selector]
+	};
+})(function (target) {
+	return document.querySelector(target)
+});
+
+var singleton = null;
+var	singletonCounter = 0;
+var	stylesInsertedAtTop = [];
+
+var	fixUrls = __webpack_require__(226);
+
+module.exports = function(list, options) {
+	if (typeof DEBUG !== "undefined" && DEBUG) {
+		if (typeof document !== "object") throw new Error("The style-loader cannot be used in a non-browser environment");
+	}
+
+	options = options || {};
+
+	options.attrs = typeof options.attrs === "object" ? options.attrs : {};
+
+	// Force single-tag solution on IE6-9, which has a hard limit on the # of <style>
+	// tags it will allow on a page
+	if (!options.singleton) options.singleton = isOldIE();
+
+	// By default, add <style> tags to the <head> element
+	if (!options.insertInto) options.insertInto = "head";
+
+	// By default, add <style> tags to the bottom of the target
+	if (!options.insertAt) options.insertAt = "bottom";
+
+	var styles = listToStyles(list, options);
+
+	addStylesToDom(styles, options);
+
+	return function update (newList) {
+		var mayRemove = [];
+
+		for (var i = 0; i < styles.length; i++) {
+			var item = styles[i];
+			var domStyle = stylesInDom[item.id];
+
+			domStyle.refs--;
+			mayRemove.push(domStyle);
+		}
+
+		if(newList) {
+			var newStyles = listToStyles(newList, options);
+			addStylesToDom(newStyles, options);
+		}
+
+		for (var i = 0; i < mayRemove.length; i++) {
+			var domStyle = mayRemove[i];
+
+			if(domStyle.refs === 0) {
+				for (var j = 0; j < domStyle.parts.length; j++) domStyle.parts[j]();
+
+				delete stylesInDom[domStyle.id];
+			}
+		}
+	};
+};
+
+function addStylesToDom (styles, options) {
+	for (var i = 0; i < styles.length; i++) {
+		var item = styles[i];
+		var domStyle = stylesInDom[item.id];
+
+		if(domStyle) {
+			domStyle.refs++;
+
+			for(var j = 0; j < domStyle.parts.length; j++) {
+				domStyle.parts[j](item.parts[j]);
+			}
+
+			for(; j < item.parts.length; j++) {
+				domStyle.parts.push(addStyle(item.parts[j], options));
+			}
+		} else {
+			var parts = [];
+
+			for(var j = 0; j < item.parts.length; j++) {
+				parts.push(addStyle(item.parts[j], options));
+			}
+
+			stylesInDom[item.id] = {id: item.id, refs: 1, parts: parts};
+		}
+	}
+}
+
+function listToStyles (list, options) {
+	var styles = [];
+	var newStyles = {};
+
+	for (var i = 0; i < list.length; i++) {
+		var item = list[i];
+		var id = options.base ? item[0] + options.base : item[0];
+		var css = item[1];
+		var media = item[2];
+		var sourceMap = item[3];
+		var part = {css: css, media: media, sourceMap: sourceMap};
+
+		if(!newStyles[id]) styles.push(newStyles[id] = {id: id, parts: [part]});
+		else newStyles[id].parts.push(part);
+	}
+
+	return styles;
+}
+
+function insertStyleElement (options, style) {
+	var target = getElement(options.insertInto)
+
+	if (!target) {
+		throw new Error("Couldn't find a style target. This probably means that the value for the 'insertInto' parameter is invalid.");
+	}
+
+	var lastStyleElementInsertedAtTop = stylesInsertedAtTop[stylesInsertedAtTop.length - 1];
+
+	if (options.insertAt === "top") {
+		if (!lastStyleElementInsertedAtTop) {
+			target.insertBefore(style, target.firstChild);
+		} else if (lastStyleElementInsertedAtTop.nextSibling) {
+			target.insertBefore(style, lastStyleElementInsertedAtTop.nextSibling);
+		} else {
+			target.appendChild(style);
+		}
+		stylesInsertedAtTop.push(style);
+	} else if (options.insertAt === "bottom") {
+		target.appendChild(style);
+	} else {
+		throw new Error("Invalid value for parameter 'insertAt'. Must be 'top' or 'bottom'.");
+	}
+}
+
+function removeStyleElement (style) {
+	if (style.parentNode === null) return false;
+	style.parentNode.removeChild(style);
+
+	var idx = stylesInsertedAtTop.indexOf(style);
+	if(idx >= 0) {
+		stylesInsertedAtTop.splice(idx, 1);
+	}
+}
+
+function createStyleElement (options) {
+	var style = document.createElement("style");
+
+	options.attrs.type = "text/css";
+
+	addAttrs(style, options.attrs);
+	insertStyleElement(options, style);
+
+	return style;
+}
+
+function createLinkElement (options) {
+	var link = document.createElement("link");
+
+	options.attrs.type = "text/css";
+	options.attrs.rel = "stylesheet";
+
+	addAttrs(link, options.attrs);
+	insertStyleElement(options, link);
+
+	return link;
+}
+
+function addAttrs (el, attrs) {
+	Object.keys(attrs).forEach(function (key) {
+		el.setAttribute(key, attrs[key]);
+	});
+}
+
+function addStyle (obj, options) {
+	var style, update, remove, result;
+
+	// If a transform function was defined, run it on the css
+	if (options.transform && obj.css) {
+	    result = options.transform(obj.css);
+
+	    if (result) {
+	    	// If transform returns a value, use that instead of the original css.
+	    	// This allows running runtime transformations on the css.
+	    	obj.css = result;
+	    } else {
+	    	// If the transform function returns a falsy value, don't add this css.
+	    	// This allows conditional loading of css
+	    	return function() {
+	    		// noop
+	    	};
+	    }
+	}
+
+	if (options.singleton) {
+		var styleIndex = singletonCounter++;
+
+		style = singleton || (singleton = createStyleElement(options));
+
+		update = applyToSingletonTag.bind(null, style, styleIndex, false);
+		remove = applyToSingletonTag.bind(null, style, styleIndex, true);
+
+	} else if (
+		obj.sourceMap &&
+		typeof URL === "function" &&
+		typeof URL.createObjectURL === "function" &&
+		typeof URL.revokeObjectURL === "function" &&
+		typeof Blob === "function" &&
+		typeof btoa === "function"
+	) {
+		style = createLinkElement(options);
+		update = updateLink.bind(null, style, options);
+		remove = function () {
+			removeStyleElement(style);
+
+			if(style.href) URL.revokeObjectURL(style.href);
+		};
+	} else {
+		style = createStyleElement(options);
+		update = applyToTag.bind(null, style);
+		remove = function () {
+			removeStyleElement(style);
+		};
+	}
+
+	update(obj);
+
+	return function updateStyle (newObj) {
+		if (newObj) {
+			if (
+				newObj.css === obj.css &&
+				newObj.media === obj.media &&
+				newObj.sourceMap === obj.sourceMap
+			) {
+				return;
+			}
+
+			update(obj = newObj);
+		} else {
+			remove();
+		}
+	};
+}
+
+var replaceText = (function () {
+	var textStore = [];
+
+	return function (index, replacement) {
+		textStore[index] = replacement;
+
+		return textStore.filter(Boolean).join('\n');
+	};
+})();
+
+function applyToSingletonTag (style, index, remove, obj) {
+	var css = remove ? "" : obj.css;
+
+	if (style.styleSheet) {
+		style.styleSheet.cssText = replaceText(index, css);
+	} else {
+		var cssNode = document.createTextNode(css);
+		var childNodes = style.childNodes;
+
+		if (childNodes[index]) style.removeChild(childNodes[index]);
+
+		if (childNodes.length) {
+			style.insertBefore(cssNode, childNodes[index]);
+		} else {
+			style.appendChild(cssNode);
+		}
+	}
+}
+
+function applyToTag (style, obj) {
+	var css = obj.css;
+	var media = obj.media;
+
+	if(media) {
+		style.setAttribute("media", media)
+	}
+
+	if(style.styleSheet) {
+		style.styleSheet.cssText = css;
+	} else {
+		while(style.firstChild) {
+			style.removeChild(style.firstChild);
+		}
+
+		style.appendChild(document.createTextNode(css));
+	}
+}
+
+function updateLink (link, options, obj) {
+	var css = obj.css;
+	var sourceMap = obj.sourceMap;
+
+	/*
+		If convertToAbsoluteUrls isn't defined, but sourcemaps are enabled
+		and there is no publicPath defined then lets turn convertToAbsoluteUrls
+		on by default.  Otherwise default to the convertToAbsoluteUrls option
+		directly
+	*/
+	var autoFixUrls = options.convertToAbsoluteUrls === undefined && sourceMap;
+
+	if (options.convertToAbsoluteUrls || autoFixUrls) {
+		css = fixUrls(css);
+	}
+
+	if (sourceMap) {
+		// http://stackoverflow.com/a/26603875
+		css += "\n/*# sourceMappingURL=data:application/json;base64," + btoa(unescape(encodeURIComponent(JSON.stringify(sourceMap)))) + " */";
+	}
+
+	var blob = new Blob([css], { type: "text/css" });
+
+	var oldSrc = link.href;
+
+	link.href = URL.createObjectURL(blob);
+
+	if(oldSrc) URL.revokeObjectURL(oldSrc);
+}
+
+
+/***/ }),
+/* 44 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(226);
+var content = __webpack_require__(283);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("18666d69", content, false);
+var update = __webpack_require__(4)("18666d69", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -16637,7 +19753,7 @@ if(false) {
 }
 
 /***/ }),
-/* 16 */
+/* 45 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -16714,7 +19830,7 @@ if(false) {
 
 
 /***/ }),
-/* 17 */
+/* 46 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -16853,7 +19969,7 @@ if(false) {
 
 
 /***/ }),
-/* 18 */
+/* 47 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -16916,7 +20032,7 @@ if(false) {
 
 
 /***/ }),
-/* 19 */
+/* 48 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -16979,7 +20095,7 @@ if(false) {
 
 
 /***/ }),
-/* 20 */
+/* 49 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17105,7 +20221,7 @@ if(false) {
 
 
 /***/ }),
-/* 21 */
+/* 50 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17168,7 +20284,7 @@ if(false) {
 
 
 /***/ }),
-/* 22 */
+/* 51 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17276,7 +20392,7 @@ if(false) {
 
 
 /***/ }),
-/* 23 */
+/* 52 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17339,7 +20455,7 @@ if(false) {
 
 
 /***/ }),
-/* 24 */
+/* 53 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17448,7 +20564,7 @@ if(false) {
 
 
 /***/ }),
-/* 25 */
+/* 54 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17584,7 +20700,7 @@ if(false) {
 
 
 /***/ }),
-/* 26 */
+/* 55 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17678,7 +20794,7 @@ if(false) {
 
 
 /***/ }),
-/* 27 */
+/* 56 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17740,7 +20856,7 @@ if(false) {
 
 
 /***/ }),
-/* 28 */
+/* 57 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17863,7 +20979,7 @@ if(false) {
 
 
 /***/ }),
-/* 29 */
+/* 58 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -17986,7 +21102,7 @@ if(false) {
 
 
 /***/ }),
-/* 30 */
+/* 59 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18098,7 +21214,7 @@ if(false) {
 
 
 /***/ }),
-/* 31 */
+/* 60 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18253,7 +21369,7 @@ if(false) {
 
 
 /***/ }),
-/* 32 */
+/* 61 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18345,7 +21461,7 @@ if(false) {
 
 
 /***/ }),
-/* 33 */
+/* 62 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18528,7 +21644,7 @@ if(false) {
 
 
 /***/ }),
-/* 34 */
+/* 63 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18595,7 +21711,7 @@ if(false) {
 
 
 /***/ }),
-/* 35 */
+/* 64 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18679,7 +21795,7 @@ if(false) {
 
 
 /***/ }),
-/* 36 */
+/* 65 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18743,7 +21859,7 @@ if(false) {
 
 
 /***/ }),
-/* 37 */
+/* 66 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18823,7 +21939,7 @@ if(false) {
 
 
 /***/ }),
-/* 38 */
+/* 67 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18903,7 +22019,7 @@ if(false) {
 
 
 /***/ }),
-/* 39 */
+/* 68 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -18983,7 +22099,7 @@ if(false) {
 
 
 /***/ }),
-/* 40 */
+/* 69 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19086,7 +22202,7 @@ if(false) {
 
 
 /***/ }),
-/* 41 */
+/* 70 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19190,7 +22306,7 @@ if(false) {
 
 
 /***/ }),
-/* 42 */
+/* 71 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19261,7 +22377,7 @@ if(false) {
 
 
 /***/ }),
-/* 43 */
+/* 72 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19328,7 +22444,7 @@ if(false) {
 
 
 /***/ }),
-/* 44 */
+/* 73 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19399,7 +22515,7 @@ if(false) {
 
 
 /***/ }),
-/* 45 */
+/* 74 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19470,7 +22586,7 @@ if(false) {
 
 
 /***/ }),
-/* 46 */
+/* 75 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19536,7 +22652,7 @@ if(false) {
 
 
 /***/ }),
-/* 47 */
+/* 76 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19607,7 +22723,7 @@ if(false) {
 
 
 /***/ }),
-/* 48 */
+/* 77 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19682,7 +22798,7 @@ if(false) {
 
 
 /***/ }),
-/* 49 */
+/* 78 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19778,7 +22894,7 @@ if(false) {
 
 
 /***/ }),
-/* 50 */
+/* 79 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19874,7 +22990,7 @@ if(false) {
 
 
 /***/ }),
-/* 51 */
+/* 80 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -19961,7 +23077,7 @@ if(false) {
 
 
 /***/ }),
-/* 52 */
+/* 81 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20045,7 +23161,7 @@ if(false) {
 
 
 /***/ }),
-/* 53 */
+/* 82 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20115,7 +23231,7 @@ if(false) {
 
 
 /***/ }),
-/* 54 */
+/* 83 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20225,7 +23341,7 @@ if(false) {
 
 
 /***/ }),
-/* 55 */
+/* 84 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20338,7 +23454,7 @@ if(false) {
 
 
 /***/ }),
-/* 56 */
+/* 85 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20402,7 +23518,7 @@ if(false) {
 
 
 /***/ }),
-/* 57 */
+/* 86 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20489,7 +23605,7 @@ if(false) {
 
 
 /***/ }),
-/* 58 */
+/* 87 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20567,7 +23683,7 @@ if(false) {
 
 
 /***/ }),
-/* 59 */
+/* 88 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20649,7 +23765,7 @@ if(false) {
 
 
 /***/ }),
-/* 60 */
+/* 89 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20728,7 +23844,7 @@ if(false) {
 
 
 /***/ }),
-/* 61 */
+/* 90 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20808,7 +23924,7 @@ if(false) {
 
 
 /***/ }),
-/* 62 */
+/* 91 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -20889,7 +24005,7 @@ if(false) {
 
 
 /***/ }),
-/* 63 */
+/* 92 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21016,7 +24132,7 @@ if(false) {
 
 
 /***/ }),
-/* 64 */
+/* 93 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21144,7 +24260,7 @@ if(false) {
 
 
 /***/ }),
-/* 65 */
+/* 94 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21245,7 +24361,7 @@ if(false) {
 
 
 /***/ }),
-/* 66 */
+/* 95 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21373,7 +24489,7 @@ if(false) {
 
 
 /***/ }),
-/* 67 */
+/* 96 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21531,7 +24647,7 @@ if(false) {
 
 
 /***/ }),
-/* 68 */
+/* 97 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21645,7 +24761,7 @@ if(false) {
 
 
 /***/ }),
-/* 69 */
+/* 98 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21744,7 +24860,7 @@ if(false) {
 
 
 /***/ }),
-/* 70 */
+/* 99 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21830,7 +24946,7 @@ if(false) {
 
 
 /***/ }),
-/* 71 */
+/* 100 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -21966,7 +25082,7 @@ if(false) {
 
 
 /***/ }),
-/* 72 */
+/* 101 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22039,7 +25155,7 @@ if(false) {
 
 
 /***/ }),
-/* 73 */
+/* 102 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22135,7 +25251,7 @@ if(false) {
 
 
 /***/ }),
-/* 74 */
+/* 103 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22221,7 +25337,7 @@ if(false) {
 
 
 /***/ }),
-/* 75 */
+/* 104 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22314,7 +25430,7 @@ if(false) {
 
 
 /***/ }),
-/* 76 */
+/* 105 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22405,7 +25521,7 @@ if(false) {
 
 
 /***/ }),
-/* 77 */
+/* 106 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22519,7 +25635,7 @@ if(false) {
 
 
 /***/ }),
-/* 78 */
+/* 107 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22649,7 +25765,7 @@ if(false) {
 
 
 /***/ }),
-/* 79 */
+/* 108 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22734,7 +25850,7 @@ if(false) {
 
 
 /***/ }),
-/* 80 */
+/* 109 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22825,7 +25941,7 @@ if(false) {
 
 
 /***/ }),
-/* 81 */
+/* 110 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -22965,7 +26081,7 @@ if(false) {
 
 
 /***/ }),
-/* 82 */
+/* 111 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23039,7 +26155,7 @@ if(false) {
 
 
 /***/ }),
-/* 83 */
+/* 112 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23161,7 +26277,7 @@ if(false) {
 
 
 /***/ }),
-/* 84 */
+/* 113 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23262,7 +26378,7 @@ if(false) {
 
 
 /***/ }),
-/* 85 */
+/* 114 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23378,7 +26494,7 @@ if(false) {
 
 
 /***/ }),
-/* 86 */
+/* 115 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23446,7 +26562,7 @@ if(false) {
 
 
 /***/ }),
-/* 87 */
+/* 116 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23540,7 +26656,7 @@ if(false) {
 
 
 /***/ }),
-/* 88 */
+/* 117 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23625,7 +26741,7 @@ if(false) {
 
 
 /***/ }),
-/* 89 */
+/* 118 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23733,7 +26849,7 @@ if(false) {
 
 
 /***/ }),
-/* 90 */
+/* 119 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23897,7 +27013,7 @@ if(false) {
 
 
 /***/ }),
-/* 91 */
+/* 120 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -23983,7 +27099,7 @@ if(false) {
 
 
 /***/ }),
-/* 92 */
+/* 121 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24069,7 +27185,7 @@ if(false) {
 
 
 /***/ }),
-/* 93 */
+/* 122 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24133,7 +27249,7 @@ if(false) {
 
 
 /***/ }),
-/* 94 */
+/* 123 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24230,7 +27346,7 @@ if(false) {
 
 
 /***/ }),
-/* 95 */
+/* 124 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24296,7 +27412,7 @@ if(false) {
 
 
 /***/ }),
-/* 96 */
+/* 125 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24423,7 +27539,7 @@ if(false) {
 
 
 /***/ }),
-/* 97 */
+/* 126 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24514,7 +27630,7 @@ if(false) {
 
 
 /***/ }),
-/* 98 */
+/* 127 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24605,7 +27721,7 @@ if(false) {
 
 
 /***/ }),
-/* 99 */
+/* 128 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24669,7 +27785,7 @@ if(false) {
 
 
 /***/ }),
-/* 100 */
+/* 129 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24797,7 +27913,7 @@ if(false) {
 
 
 /***/ }),
-/* 101 */
+/* 130 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24927,7 +28043,7 @@ if(false) {
 
 
 /***/ }),
-/* 102 */
+/* 131 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -24996,7 +28112,7 @@ if(false) {
 
 
 /***/ }),
-/* 103 */
+/* 132 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25061,7 +28177,7 @@ if(false) {
 
 
 /***/ }),
-/* 104 */
+/* 133 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25140,7 +28256,7 @@ if(false) {
 
 
 /***/ }),
-/* 105 */
+/* 134 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25326,7 +28442,7 @@ if(false) {
 
 
 /***/ }),
-/* 106 */
+/* 135 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25428,7 +28544,7 @@ if(false) {
 
 
 /***/ }),
-/* 107 */
+/* 136 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25492,7 +28608,7 @@ if(false) {
 
 
 /***/ }),
-/* 108 */
+/* 137 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25567,7 +28683,7 @@ if(false) {
 
 
 /***/ }),
-/* 109 */
+/* 138 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25727,7 +28843,7 @@ if(false) {
 
 
 /***/ }),
-/* 110 */
+/* 139 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25904,7 +29020,7 @@ if(false) {
 
 
 /***/ }),
-/* 111 */
+/* 140 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -25976,7 +29092,7 @@ if(false) {
 
 
 /***/ }),
-/* 112 */
+/* 141 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26091,7 +29207,7 @@ if(false) {
 
 
 /***/ }),
-/* 113 */
+/* 142 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26206,7 +29322,7 @@ if(false) {
 
 
 /***/ }),
-/* 114 */
+/* 143 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26298,7 +29414,7 @@ if(false) {
 
 
 /***/ }),
-/* 115 */
+/* 144 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26371,7 +29487,7 @@ if(false) {
 
 
 /***/ }),
-/* 116 */
+/* 145 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26434,7 +29550,7 @@ if(false) {
 
 
 /***/ }),
-/* 117 */
+/* 146 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26567,7 +29683,7 @@ if(false) {
 
 
 /***/ }),
-/* 118 */
+/* 147 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26660,7 +29776,7 @@ if(false) {
 
 
 /***/ }),
-/* 119 */
+/* 148 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26731,7 +29847,7 @@ if(false) {
 
 
 /***/ }),
-/* 120 */
+/* 149 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26851,7 +29967,7 @@ if(false) {
 
 
 /***/ }),
-/* 121 */
+/* 150 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26922,7 +30038,7 @@ if(false) {
 
 
 /***/ }),
-/* 122 */
+/* 151 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -26988,7 +30104,7 @@ if(false) {
 
 
 /***/ }),
-/* 123 */
+/* 152 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -27114,7 +30230,7 @@ if(false) {
 
 
 /***/ }),
-/* 124 */
+/* 153 */
 /***/ (function(module, exports, __webpack_require__) {
 
 
@@ -27212,7 +30328,7 @@ if(false) {
 
 
 /***/ }),
-/* 125 */
+/* 154 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -27307,7 +30423,7 @@ if(false) {
 
 
 /***/ }),
-/* 126 */
+/* 155 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -27369,7 +30485,7 @@ if(false) {
 
 
 /***/ }),
-/* 127 */
+/* 156 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -27431,7 +30547,7 @@ if(false) {
 
 
 /***/ }),
-/* 128 */
+/* 157 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js language configuration
@@ -27554,7 +30670,7 @@ if(false) {
 
 
 /***/ }),
-/* 129 */
+/* 158 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -27709,7 +30825,7 @@ if(false) {
 
 
 /***/ }),
-/* 130 */
+/* 159 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -27811,7 +30927,7 @@ if(false) {
 
 
 /***/ }),
-/* 131 */
+/* 160 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -27873,7 +30989,7 @@ if(false) {
 
 
 /***/ }),
-/* 132 */
+/* 161 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -27935,7 +31051,7 @@ if(false) {
 
 
 /***/ }),
-/* 133 */
+/* 162 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -28018,7 +31134,7 @@ if(false) {
 
 
 /***/ }),
-/* 134 */
+/* 163 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -28090,7 +31206,7 @@ if(false) {
 
 
 /***/ }),
-/* 135 */
+/* 164 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -28154,7 +31270,7 @@ if(false) {
 
 
 /***/ }),
-/* 136 */
+/* 165 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -28268,7 +31384,7 @@ if(false) {
 
 
 /***/ }),
-/* 137 */
+/* 166 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -28375,7 +31491,7 @@ if(false) {
 
 
 /***/ }),
-/* 138 */
+/* 167 */
 /***/ (function(module, exports, __webpack_require__) {
 
 //! moment.js locale configuration
@@ -28482,21 +31598,1402 @@ if(false) {
 
 
 /***/ }),
-/* 139 */
+/* 168 */
 /***/ (function(module, exports, __webpack_require__) {
 
-__webpack_require__(140);
-module.exports = __webpack_require__(241);
+/**
+ * vue-markdown v2.2.4
+ * https://github.com/miaolz123/vue-markdown
+ * MIT License
+ */
+
+(function webpackUniversalModuleDefinition(root, factory) {
+	if(true)
+		module.exports = factory(__webpack_require__(297), __webpack_require__(324), __webpack_require__(328), __webpack_require__(380), __webpack_require__(386), __webpack_require__(387), __webpack_require__(388), __webpack_require__(389), __webpack_require__(390), __webpack_require__(391), __webpack_require__(392), __webpack_require__(393), __webpack_require__(406), __webpack_require__(421));
+	else if(typeof define === 'function' && define.amd)
+		define(["babel-runtime/core-js/get-iterator", "babel-runtime/core-js/object/keys", "markdown-it", "markdown-it-emoji", "markdown-it-sub", "markdown-it-sup", "markdown-it-footnote", "markdown-it-deflist", "markdown-it-abbr", "markdown-it-ins", "markdown-it-mark", "markdown-it-toc-and-anchor", "markdown-it-katex", "markdown-it-task-lists"], factory);
+	else if(typeof exports === 'object')
+		exports["VueMarkdown"] = factory(require("babel-runtime/core-js/get-iterator"), require("babel-runtime/core-js/object/keys"), require("markdown-it"), require("markdown-it-emoji"), require("markdown-it-sub"), require("markdown-it-sup"), require("markdown-it-footnote"), require("markdown-it-deflist"), require("markdown-it-abbr"), require("markdown-it-ins"), require("markdown-it-mark"), require("markdown-it-toc-and-anchor"), require("markdown-it-katex"), require("markdown-it-task-lists"));
+	else
+		root["VueMarkdown"] = factory(root["babel-runtime/core-js/get-iterator"], root["babel-runtime/core-js/object/keys"], root["markdown-it"], root["markdown-it-emoji"], root["markdown-it-sub"], root["markdown-it-sup"], root["markdown-it-footnote"], root["markdown-it-deflist"], root["markdown-it-abbr"], root["markdown-it-ins"], root["markdown-it-mark"], root["markdown-it-toc-and-anchor"], root["markdown-it-katex"], root["markdown-it-task-lists"]);
+})(this, function(__WEBPACK_EXTERNAL_MODULE_1__, __WEBPACK_EXTERNAL_MODULE_2__, __WEBPACK_EXTERNAL_MODULE_3__, __WEBPACK_EXTERNAL_MODULE_4__, __WEBPACK_EXTERNAL_MODULE_5__, __WEBPACK_EXTERNAL_MODULE_6__, __WEBPACK_EXTERNAL_MODULE_7__, __WEBPACK_EXTERNAL_MODULE_8__, __WEBPACK_EXTERNAL_MODULE_9__, __WEBPACK_EXTERNAL_MODULE_10__, __WEBPACK_EXTERNAL_MODULE_11__, __WEBPACK_EXTERNAL_MODULE_12__, __WEBPACK_EXTERNAL_MODULE_13__, __WEBPACK_EXTERNAL_MODULE_14__) {
+return /******/ (function(modules) { // webpackBootstrap
+/******/ 	// The module cache
+/******/ 	var installedModules = {};
+
+/******/ 	// The require function
+/******/ 	function __webpack_require__(moduleId) {
+
+/******/ 		// Check if module is in cache
+/******/ 		if(installedModules[moduleId])
+/******/ 			return installedModules[moduleId].exports;
+
+/******/ 		// Create a new module (and put it into the cache)
+/******/ 		var module = installedModules[moduleId] = {
+/******/ 			exports: {},
+/******/ 			id: moduleId,
+/******/ 			loaded: false
+/******/ 		};
+
+/******/ 		// Execute the module function
+/******/ 		modules[moduleId].call(module.exports, module, module.exports, __webpack_require__);
+
+/******/ 		// Flag the module as loaded
+/******/ 		module.loaded = true;
+
+/******/ 		// Return the exports of the module
+/******/ 		return module.exports;
+/******/ 	}
+
+
+/******/ 	// expose the modules object (__webpack_modules__)
+/******/ 	__webpack_require__.m = modules;
+
+/******/ 	// expose the module cache
+/******/ 	__webpack_require__.c = installedModules;
+
+/******/ 	// __webpack_public_path__
+/******/ 	__webpack_require__.p = "";
+
+/******/ 	// Load entry module and return exports
+/******/ 	return __webpack_require__(0);
+/******/ })
+/************************************************************************/
+/******/ ([
+/* 0 */
+/***/ (function(module, exports, __webpack_require__) {
+
+	'use strict';
+
+	Object.defineProperty(exports, "__esModule", {
+	  value: true
+	});
+
+	var _getIterator2 = __webpack_require__(1);
+
+	var _getIterator3 = _interopRequireDefault(_getIterator2);
+
+	var _keys = __webpack_require__(2);
+
+	var _keys2 = _interopRequireDefault(_keys);
+
+	var _markdownIt = __webpack_require__(3);
+
+	var _markdownIt2 = _interopRequireDefault(_markdownIt);
+
+	var _markdownItEmoji = __webpack_require__(4);
+
+	var _markdownItEmoji2 = _interopRequireDefault(_markdownItEmoji);
+
+	var _markdownItSub = __webpack_require__(5);
+
+	var _markdownItSub2 = _interopRequireDefault(_markdownItSub);
+
+	var _markdownItSup = __webpack_require__(6);
+
+	var _markdownItSup2 = _interopRequireDefault(_markdownItSup);
+
+	var _markdownItFootnote = __webpack_require__(7);
+
+	var _markdownItFootnote2 = _interopRequireDefault(_markdownItFootnote);
+
+	var _markdownItDeflist = __webpack_require__(8);
+
+	var _markdownItDeflist2 = _interopRequireDefault(_markdownItDeflist);
+
+	var _markdownItAbbr = __webpack_require__(9);
+
+	var _markdownItAbbr2 = _interopRequireDefault(_markdownItAbbr);
+
+	var _markdownItIns = __webpack_require__(10);
+
+	var _markdownItIns2 = _interopRequireDefault(_markdownItIns);
+
+	var _markdownItMark = __webpack_require__(11);
+
+	var _markdownItMark2 = _interopRequireDefault(_markdownItMark);
+
+	var _markdownItTocAndAnchor = __webpack_require__(12);
+
+	var _markdownItTocAndAnchor2 = _interopRequireDefault(_markdownItTocAndAnchor);
+
+	var _markdownItKatex = __webpack_require__(13);
+
+	var _markdownItKatex2 = _interopRequireDefault(_markdownItKatex);
+
+	var _markdownItTaskLists = __webpack_require__(14);
+
+	var _markdownItTaskLists2 = _interopRequireDefault(_markdownItTaskLists);
+
+	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+	exports.default = {
+	  md: new _markdownIt2.default(),
+
+	  template: '<div><slot></slot></div>',
+
+	  data: function data() {
+	    return {
+	      sourceData: this.source
+	    };
+	  },
+
+
+	  props: {
+	    watches: {
+	      type: Array,
+	      default: function _default() {
+	        return ['source', 'show', 'toc'];
+	      }
+	    },
+	    source: {
+	      type: String,
+	      default: ''
+	    },
+	    show: {
+	      type: Boolean,
+	      default: true
+	    },
+	    highlight: {
+	      type: Boolean,
+	      default: true
+	    },
+	    html: {
+	      type: Boolean,
+	      default: true
+	    },
+	    xhtmlOut: {
+	      type: Boolean,
+	      default: true
+	    },
+	    breaks: {
+	      type: Boolean,
+	      default: true
+	    },
+	    linkify: {
+	      type: Boolean,
+	      default: true
+	    },
+	    emoji: {
+	      type: Boolean,
+	      default: true
+	    },
+	    typographer: {
+	      type: Boolean,
+	      default: true
+	    },
+	    langPrefix: {
+	      type: String,
+	      default: 'language-'
+	    },
+	    quotes: {
+	      type: String,
+	      default: '“”‘’'
+	    },
+	    tableClass: {
+	      type: String,
+	      default: 'table'
+	    },
+	    taskLists: {
+	      type: Boolean,
+	      default: true
+	    },
+	    toc: {
+	      type: Boolean,
+	      default: false
+	    },
+	    tocId: {
+	      type: String
+	    },
+	    tocClass: {
+	      type: String,
+	      default: 'table-of-contents'
+	    },
+	    tocFirstLevel: {
+	      type: Number,
+	      default: 2
+	    },
+	    tocLastLevel: {
+	      type: Number
+	    },
+	    tocAnchorLink: {
+	      type: Boolean,
+	      default: true
+	    },
+	    tocAnchorClass: {
+	      type: String,
+	      default: 'toc-anchor'
+	    },
+	    tocAnchorLinkSymbol: {
+	      type: String,
+	      default: '#'
+	    },
+	    tocAnchorLinkSpace: {
+	      type: Boolean,
+	      default: true
+	    },
+	    tocAnchorLinkClass: {
+	      type: String,
+	      default: 'toc-anchor-link'
+	    },
+	    anchorAttributes: {
+	      type: Object,
+	      default: function _default() {
+	        return {};
+	      }
+	    },
+	    prerender: {
+	      type: Function,
+	      default: function _default(sourceData) {
+	        return sourceData;
+	      }
+	    },
+	    postrender: {
+	      type: Function,
+	      default: function _default(htmlData) {
+	        return htmlData;
+	      }
+	    }
+	  },
+
+	  computed: {
+	    tocLastLevelComputed: function tocLastLevelComputed() {
+	      return this.tocLastLevel > this.tocFirstLevel ? this.tocLastLevel : this.tocFirstLevel + 1;
+	    }
+	  },
+
+	  render: function render(createElement) {
+	    var _this = this;
+
+	    this.md = new _markdownIt2.default().use(_markdownItSub2.default).use(_markdownItSup2.default).use(_markdownItFootnote2.default).use(_markdownItDeflist2.default).use(_markdownItAbbr2.default).use(_markdownItIns2.default).use(_markdownItMark2.default).use(_markdownItKatex2.default, { "throwOnError": false, "errorColor": " #cc0000" }).use(_markdownItTaskLists2.default, { enabled: this.taskLists });
+
+	    if (this.emoji) {
+	      this.md.use(_markdownItEmoji2.default);
+	    }
+
+	    this.md.set({
+	      html: this.html,
+	      xhtmlOut: this.xhtmlOut,
+	      breaks: this.breaks,
+	      linkify: this.linkify,
+	      typographer: this.typographer,
+	      langPrefix: this.langPrefix,
+	      quotes: this.quotes
+	    });
+	    this.md.renderer.rules.table_open = function () {
+	      return '<table class="' + _this.tableClass + '">\n';
+	    };
+	    var defaultLinkRenderer = this.md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
+	      return self.renderToken(tokens, idx, options);
+	    };
+	    this.md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
+	      (0, _keys2.default)(_this.anchorAttributes).map(function (attribute) {
+	        var aIndex = tokens[idx].attrIndex(attribute);
+	        var value = _this.anchorAttributes[attribute];
+	        if (aIndex < 0) {
+	          tokens[idx].attrPush([attribute, value]); // add new attribute
+	        } else {
+	          tokens[idx].attrs[aIndex][1] = value;
+	        }
+	      });
+	      return defaultLinkRenderer(tokens, idx, options, env, self);
+	    };
+
+	    if (this.toc) {
+	      this.md.use(_markdownItTocAndAnchor2.default, {
+	        tocClassName: this.tocClass,
+	        tocFirstLevel: this.tocFirstLevel,
+	        tocLastLevel: this.tocLastLevelComputed,
+	        anchorLink: this.tocAnchorLink,
+	        anchorLinkSymbol: this.tocAnchorLinkSymbol,
+	        anchorLinkSpace: this.tocAnchorLinkSpace,
+	        anchorClassName: this.tocAnchorClass,
+	        anchorLinkSymbolClassName: this.tocAnchorLinkClass,
+	        tocCallback: function tocCallback(tocMarkdown, tocArray, tocHtml) {
+	          if (tocHtml) {
+	            if (_this.tocId && document.getElementById(_this.tocId)) {
+	              document.getElementById(_this.tocId).innerHTML = tocHtml;
+	            }
+
+	            _this.$emit('toc-rendered', tocHtml);
+	          }
+	        }
+	      });
+	    }
+
+	    var outHtml = this.show ? this.md.render(this.prerender(this.sourceData)) : '';
+	    outHtml = this.postrender(outHtml);
+
+	    this.$emit('rendered', outHtml);
+	    return createElement('div', {
+	      domProps: {
+	        innerHTML: outHtml
+	      }
+	    });
+	  },
+	  beforeMount: function beforeMount() {
+	    var _this2 = this;
+
+	    if (this.$slots.default) {
+	      this.sourceData = '';
+	      var _iteratorNormalCompletion = true;
+	      var _didIteratorError = false;
+	      var _iteratorError = undefined;
+
+	      try {
+	        for (var _iterator = (0, _getIterator3.default)(this.$slots.default), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+	          var slot = _step.value;
+
+	          this.sourceData += slot.text;
+	        }
+	      } catch (err) {
+	        _didIteratorError = true;
+	        _iteratorError = err;
+	      } finally {
+	        try {
+	          if (!_iteratorNormalCompletion && _iterator.return) {
+	            _iterator.return();
+	          }
+	        } finally {
+	          if (_didIteratorError) {
+	            throw _iteratorError;
+	          }
+	        }
+	      }
+	    }
+
+	    this.$watch('source', function () {
+	      _this2.sourceData = _this2.prerender(_this2.source);
+	      _this2.$forceUpdate();
+	    });
+
+	    this.watches.forEach(function (v) {
+	      _this2.$watch(v, function () {
+	        _this2.$forceUpdate();
+	      });
+	    });
+	  }
+	};
+
+/***/ }),
+/* 1 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_1__;
+
+/***/ }),
+/* 2 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_2__;
+
+/***/ }),
+/* 3 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_3__;
+
+/***/ }),
+/* 4 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_4__;
+
+/***/ }),
+/* 5 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_5__;
+
+/***/ }),
+/* 6 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_6__;
+
+/***/ }),
+/* 7 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_7__;
+
+/***/ }),
+/* 8 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_8__;
+
+/***/ }),
+/* 9 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_9__;
+
+/***/ }),
+/* 10 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_10__;
+
+/***/ }),
+/* 11 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_11__;
+
+/***/ }),
+/* 12 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_12__;
+
+/***/ }),
+/* 13 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_13__;
+
+/***/ }),
+/* 14 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_14__;
+
+/***/ })
+/******/ ])
+});
+;
+
+/***/ }),
+/* 169 */
+/***/ (function(module, exports) {
+
+var toString = {}.toString;
+
+module.exports = function (it) {
+  return toString.call(it).slice(8, -1);
+};
 
 
 /***/ }),
-/* 140 */
+/* 170 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var LIBRARY = __webpack_require__(304);
+var $export = __webpack_require__(171);
+var redefine = __webpack_require__(309);
+var hide = __webpack_require__(12);
+var has = __webpack_require__(18);
+var Iterators = __webpack_require__(15);
+var $iterCreate = __webpack_require__(310);
+var setToStringTag = __webpack_require__(178);
+var getPrototypeOf = __webpack_require__(318);
+var ITERATOR = __webpack_require__(9)('iterator');
+var BUGGY = !([].keys && 'next' in [].keys()); // Safari has buggy iterators w/o `next`
+var FF_ITERATOR = '@@iterator';
+var KEYS = 'keys';
+var VALUES = 'values';
+
+var returnThis = function () { return this; };
+
+module.exports = function (Base, NAME, Constructor, next, DEFAULT, IS_SET, FORCED) {
+  $iterCreate(Constructor, NAME, next);
+  var getMethod = function (kind) {
+    if (!BUGGY && kind in proto) return proto[kind];
+    switch (kind) {
+      case KEYS: return function keys() { return new Constructor(this, kind); };
+      case VALUES: return function values() { return new Constructor(this, kind); };
+    } return function entries() { return new Constructor(this, kind); };
+  };
+  var TAG = NAME + ' Iterator';
+  var DEF_VALUES = DEFAULT == VALUES;
+  var VALUES_BUG = false;
+  var proto = Base.prototype;
+  var $native = proto[ITERATOR] || proto[FF_ITERATOR] || DEFAULT && proto[DEFAULT];
+  var $default = $native || getMethod(DEFAULT);
+  var $entries = DEFAULT ? !DEF_VALUES ? $default : getMethod('entries') : undefined;
+  var $anyNative = NAME == 'Array' ? proto.entries || $native : $native;
+  var methods, key, IteratorPrototype;
+  // Fix native
+  if ($anyNative) {
+    IteratorPrototype = getPrototypeOf($anyNative.call(new Base()));
+    if (IteratorPrototype !== Object.prototype && IteratorPrototype.next) {
+      // Set @@toStringTag to native iterators
+      setToStringTag(IteratorPrototype, TAG, true);
+      // fix for some old engines
+      if (!LIBRARY && !has(IteratorPrototype, ITERATOR)) hide(IteratorPrototype, ITERATOR, returnThis);
+    }
+  }
+  // fix Array#{values, @@iterator}.name in V8 / FF
+  if (DEF_VALUES && $native && $native.name !== VALUES) {
+    VALUES_BUG = true;
+    $default = function values() { return $native.call(this); };
+  }
+  // Define iterator
+  if ((!LIBRARY || FORCED) && (BUGGY || VALUES_BUG || !proto[ITERATOR])) {
+    hide(proto, ITERATOR, $default);
+  }
+  // Plug for library
+  Iterators[NAME] = $default;
+  Iterators[TAG] = returnThis;
+  if (DEFAULT) {
+    methods = {
+      values: DEF_VALUES ? $default : getMethod(VALUES),
+      keys: IS_SET ? $default : getMethod(KEYS),
+      entries: $entries
+    };
+    if (FORCED) for (key in methods) {
+      if (!(key in proto)) redefine(proto, key, methods[key]);
+    } else $export($export.P + $export.F * (BUGGY || VALUES_BUG), NAME, methods);
+  }
+  return methods;
+};
+
+
+/***/ }),
+/* 171 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var global = __webpack_require__(8);
+var core = __webpack_require__(11);
+var ctx = __webpack_require__(305);
+var hide = __webpack_require__(12);
+var PROTOTYPE = 'prototype';
+
+var $export = function (type, name, source) {
+  var IS_FORCED = type & $export.F;
+  var IS_GLOBAL = type & $export.G;
+  var IS_STATIC = type & $export.S;
+  var IS_PROTO = type & $export.P;
+  var IS_BIND = type & $export.B;
+  var IS_WRAP = type & $export.W;
+  var exports = IS_GLOBAL ? core : core[name] || (core[name] = {});
+  var expProto = exports[PROTOTYPE];
+  var target = IS_GLOBAL ? global : IS_STATIC ? global[name] : (global[name] || {})[PROTOTYPE];
+  var key, own, out;
+  if (IS_GLOBAL) source = name;
+  for (key in source) {
+    // contains in native
+    own = !IS_FORCED && target && target[key] !== undefined;
+    if (own && key in exports) continue;
+    // export native or passed
+    out = own ? target[key] : source[key];
+    // prevent global pollution for namespaces
+    exports[key] = IS_GLOBAL && typeof target[key] != 'function' ? source[key]
+    // bind timers to global for call from export context
+    : IS_BIND && own ? ctx(out, global)
+    // wrap global constructors for prevent change them in library
+    : IS_WRAP && target[key] == out ? (function (C) {
+      var F = function (a, b, c) {
+        if (this instanceof C) {
+          switch (arguments.length) {
+            case 0: return new C();
+            case 1: return new C(a);
+            case 2: return new C(a, b);
+          } return new C(a, b, c);
+        } return C.apply(this, arguments);
+      };
+      F[PROTOTYPE] = C[PROTOTYPE];
+      return F;
+    // make static versions for prototype methods
+    })(out) : IS_PROTO && typeof out == 'function' ? ctx(Function.call, out) : out;
+    // export proto methods to core.%CONSTRUCTOR%.methods.%NAME%
+    if (IS_PROTO) {
+      (exports.virtual || (exports.virtual = {}))[key] = out;
+      // export proto methods to core.%CONSTRUCTOR%.prototype.%NAME%
+      if (type & $export.R && expProto && !expProto[key]) hide(expProto, key, out);
+    }
+  }
+};
+// type bitmap
+$export.F = 1;   // forced
+$export.G = 2;   // global
+$export.S = 4;   // static
+$export.P = 8;   // proto
+$export.B = 16;  // bind
+$export.W = 32;  // wrap
+$export.U = 64;  // safe
+$export.R = 128; // real proto method for `library`
+module.exports = $export;
+
+
+/***/ }),
+/* 172 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var isObject = __webpack_require__(28);
+var document = __webpack_require__(8).document;
+// typeof document.createElement is 'object' in old IE
+var is = isObject(document) && isObject(document.createElement);
+module.exports = function (it) {
+  return is ? document.createElement(it) : {};
+};
+
+
+/***/ }),
+/* 173 */
+/***/ (function(module, exports) {
+
+module.exports = function (bitmap, value) {
+  return {
+    enumerable: !(bitmap & 1),
+    configurable: !(bitmap & 2),
+    writable: !(bitmap & 4),
+    value: value
+  };
+};
+
+
+/***/ }),
+/* 174 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 19.1.2.14 / 15.2.3.14 Object.keys(O)
+var $keys = __webpack_require__(313);
+var enumBugKeys = __webpack_require__(177);
+
+module.exports = Object.keys || function keys(O) {
+  return $keys(O, enumBugKeys);
+};
+
+
+/***/ }),
+/* 175 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var global = __webpack_require__(8);
+var SHARED = '__core-js_shared__';
+var store = global[SHARED] || (global[SHARED] = {});
+module.exports = function (key) {
+  return store[key] || (store[key] = {});
+};
+
+
+/***/ }),
+/* 176 */
+/***/ (function(module, exports) {
+
+var id = 0;
+var px = Math.random();
+module.exports = function (key) {
+  return 'Symbol('.concat(key === undefined ? '' : key, ')_', (++id + px).toString(36));
+};
+
+
+/***/ }),
+/* 177 */
+/***/ (function(module, exports) {
+
+// IE 8- don't enum bug keys
+module.exports = (
+  'constructor,hasOwnProperty,isPrototypeOf,propertyIsEnumerable,toLocaleString,toString,valueOf'
+).split(',');
+
+
+/***/ }),
+/* 178 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var def = __webpack_require__(27).f;
+var has = __webpack_require__(18);
+var TAG = __webpack_require__(9)('toStringTag');
+
+module.exports = function (it, tag, stat) {
+  if (it && !has(it = stat ? it : it.prototype, TAG)) def(it, TAG, { configurable: true, value: tag });
+};
+
+
+/***/ }),
+/* 179 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 7.1.13 ToObject(argument)
+var defined = __webpack_require__(26);
+module.exports = function (it) {
+  return Object(defined(it));
+};
+
+
+/***/ }),
+/* 180 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// HTML5 entities map: { name -> utf16string }
+//
+
+
+/*eslint quotes:0*/
+module.exports = __webpack_require__(330);
+
+
+/***/ }),
+/* 181 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+
+module.exports.encode = __webpack_require__(331);
+module.exports.decode = __webpack_require__(332);
+module.exports.format = __webpack_require__(333);
+module.exports.parse  = __webpack_require__(334);
+
+
+/***/ }),
+/* 182 */
+/***/ (function(module, exports) {
+
+module.exports=/[\0-\uD7FF\uE000-\uFFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/
+
+/***/ }),
+/* 183 */
+/***/ (function(module, exports) {
+
+module.exports=/[\0-\x1F\x7F-\x9F]/
+
+/***/ }),
+/* 184 */
+/***/ (function(module, exports) {
+
+module.exports=/[ \xA0\u1680\u2000-\u200A\u202F\u205F\u3000]/
+
+/***/ }),
+/* 185 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// Regexps to match html elements
+
+
+
+var attr_name     = '[a-zA-Z_:][a-zA-Z0-9:._-]*';
+
+var unquoted      = '[^"\'=<>`\\x00-\\x20]+';
+var single_quoted = "'[^']*'";
+var double_quoted = '"[^"]*"';
+
+var attr_value  = '(?:' + unquoted + '|' + single_quoted + '|' + double_quoted + ')';
+
+var attribute   = '(?:\\s+' + attr_name + '(?:\\s*=\\s*' + attr_value + ')?)';
+
+var open_tag    = '<[A-Za-z][A-Za-z0-9\\-]*' + attribute + '*\\s*\\/?>';
+
+var close_tag   = '<\\/[A-Za-z][A-Za-z0-9\\-]*\\s*>';
+var comment     = '<!---->|<!--(?:-?[^>-])(?:-?[^-])*-->';
+var processing  = '<[?].*?[?]>';
+var declaration = '<![A-Z]+\\s+[^>]*>';
+var cdata       = '<!\\[CDATA\\[[\\s\\S]*?\\]\\]>';
+
+var HTML_TAG_RE = new RegExp('^(?:' + open_tag + '|' + close_tag + '|' + comment +
+                        '|' + processing + '|' + declaration + '|' + cdata + ')');
+var HTML_OPEN_CLOSE_TAG_RE = new RegExp('^(?:' + open_tag + '|' + close_tag + ')');
+
+module.exports.HTML_TAG_RE = HTML_TAG_RE;
+module.exports.HTML_OPEN_CLOSE_TAG_RE = HTML_OPEN_CLOSE_TAG_RE;
+
+
+/***/ }),
+/* 186 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// ~~strike through~~
+//
+
+
+
+// Insert each marker as a separate text token, and add it to delimiter list
+//
+module.exports.tokenize = function strikethrough(state, silent) {
+  var i, scanned, token, len, ch,
+      start = state.pos,
+      marker = state.src.charCodeAt(start);
+
+  if (silent) { return false; }
+
+  if (marker !== 0x7E/* ~ */) { return false; }
+
+  scanned = state.scanDelims(state.pos, true);
+  len = scanned.length;
+  ch = String.fromCharCode(marker);
+
+  if (len < 2) { return false; }
+
+  if (len % 2) {
+    token         = state.push('text', '', 0);
+    token.content = ch;
+    len--;
+  }
+
+  for (i = 0; i < len; i += 2) {
+    token         = state.push('text', '', 0);
+    token.content = ch + ch;
+
+    state.delimiters.push({
+      marker: marker,
+      jump:   i,
+      token:  state.tokens.length - 1,
+      level:  state.level,
+      end:    -1,
+      open:   scanned.can_open,
+      close:  scanned.can_close
+    });
+  }
+
+  state.pos += scanned.length;
+
+  return true;
+};
+
+
+// Walk through delimiter list and replace text tokens with tags
+//
+module.exports.postProcess = function strikethrough(state) {
+  var i, j,
+      startDelim,
+      endDelim,
+      token,
+      loneMarkers = [],
+      delimiters = state.delimiters,
+      max = state.delimiters.length;
+
+  for (i = 0; i < max; i++) {
+    startDelim = delimiters[i];
+
+    if (startDelim.marker !== 0x7E/* ~ */) {
+      continue;
+    }
+
+    if (startDelim.end === -1) {
+      continue;
+    }
+
+    endDelim = delimiters[startDelim.end];
+
+    token         = state.tokens[startDelim.token];
+    token.type    = 's_open';
+    token.tag     = 's';
+    token.nesting = 1;
+    token.markup  = '~~';
+    token.content = '';
+
+    token         = state.tokens[endDelim.token];
+    token.type    = 's_close';
+    token.tag     = 's';
+    token.nesting = -1;
+    token.markup  = '~~';
+    token.content = '';
+
+    if (state.tokens[endDelim.token - 1].type === 'text' &&
+        state.tokens[endDelim.token - 1].content === '~') {
+
+      loneMarkers.push(endDelim.token - 1);
+    }
+  }
+
+  // If a marker sequence has an odd number of characters, it's splitted
+  // like this: `~~~~~` -> `~` + `~~` + `~~`, leaving one marker at the
+  // start of the sequence.
+  //
+  // So, we have to move all those markers after subsequent s_close tags.
+  //
+  while (loneMarkers.length) {
+    i = loneMarkers.pop();
+    j = i + 1;
+
+    while (j < state.tokens.length && state.tokens[j].type === 's_close') {
+      j++;
+    }
+
+    j--;
+
+    if (i !== j) {
+      token = state.tokens[j];
+      state.tokens[j] = state.tokens[i];
+      state.tokens[i] = token;
+    }
+  }
+};
+
+
+/***/ }),
+/* 187 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// Process *this* and _that_
+//
+
+
+
+// Insert each marker as a separate text token, and add it to delimiter list
+//
+module.exports.tokenize = function emphasis(state, silent) {
+  var i, scanned, token,
+      start = state.pos,
+      marker = state.src.charCodeAt(start);
+
+  if (silent) { return false; }
+
+  if (marker !== 0x5F /* _ */ && marker !== 0x2A /* * */) { return false; }
+
+  scanned = state.scanDelims(state.pos, marker === 0x2A);
+
+  for (i = 0; i < scanned.length; i++) {
+    token         = state.push('text', '', 0);
+    token.content = String.fromCharCode(marker);
+
+    state.delimiters.push({
+      // Char code of the starting marker (number).
+      //
+      marker: marker,
+
+      // An amount of characters before this one that's equivalent to
+      // current one. In plain English: if this delimiter does not open
+      // an emphasis, neither do previous `jump` characters.
+      //
+      // Used to skip sequences like "*****" in one step, for 1st asterisk
+      // value will be 0, for 2nd it's 1 and so on.
+      //
+      jump:   i,
+
+      // A position of the token this delimiter corresponds to.
+      //
+      token:  state.tokens.length - 1,
+
+      // Token level.
+      //
+      level:  state.level,
+
+      // If this delimiter is matched as a valid opener, `end` will be
+      // equal to its position, otherwise it's `-1`.
+      //
+      end:    -1,
+
+      // Boolean flags that determine if this delimiter could open or close
+      // an emphasis.
+      //
+      open:   scanned.can_open,
+      close:  scanned.can_close
+    });
+  }
+
+  state.pos += scanned.length;
+
+  return true;
+};
+
+
+// Walk through delimiter list and replace text tokens with tags
+//
+module.exports.postProcess = function emphasis(state) {
+  var i,
+      startDelim,
+      endDelim,
+      token,
+      ch,
+      isStrong,
+      delimiters = state.delimiters,
+      max = state.delimiters.length;
+
+  for (i = 0; i < max; i++) {
+    startDelim = delimiters[i];
+
+    if (startDelim.marker !== 0x5F/* _ */ && startDelim.marker !== 0x2A/* * */) {
+      continue;
+    }
+
+    // Process only opening markers
+    if (startDelim.end === -1) {
+      continue;
+    }
+
+    endDelim = delimiters[startDelim.end];
+
+    // If the next delimiter has the same marker and is adjacent to this one,
+    // merge those into one strong delimiter.
+    //
+    // `<em><em>whatever</em></em>` -> `<strong>whatever</strong>`
+    //
+    isStrong = i + 1 < max &&
+               delimiters[i + 1].end === startDelim.end - 1 &&
+               delimiters[i + 1].token === startDelim.token + 1 &&
+               delimiters[startDelim.end - 1].token === endDelim.token - 1 &&
+               delimiters[i + 1].marker === startDelim.marker;
+
+    ch = String.fromCharCode(startDelim.marker);
+
+    token         = state.tokens[startDelim.token];
+    token.type    = isStrong ? 'strong_open' : 'em_open';
+    token.tag     = isStrong ? 'strong' : 'em';
+    token.nesting = 1;
+    token.markup  = isStrong ? ch + ch : ch;
+    token.content = '';
+
+    token         = state.tokens[endDelim.token];
+    token.type    = isStrong ? 'strong_close' : 'em_close';
+    token.tag     = isStrong ? 'strong' : 'em';
+    token.nesting = -1;
+    token.markup  = isStrong ? ch + ch : ch;
+    token.content = '';
+
+    if (isStrong) {
+      state.tokens[delimiters[i + 1].token].content = '';
+      state.tokens[delimiters[startDelim.end - 1].token].content = '';
+      i++;
+    }
+  }
+};
+
+
+/***/ }),
+/* 188 */
+/***/ (function(module, exports) {
+
+/**
+ * This is a module for storing settings passed into KaTeX. It correctly handles
+ * default settings.
+ */
+
+/**
+ * Helper function for getting a default value if the value is undefined
+ */
+function get(option, defaultValue) {
+    return option === undefined ? defaultValue : option;
+}
+
+/**
+ * The main Settings object
+ *
+ * The current options stored are:
+ *  - displayMode: Whether the expression should be typeset by default in
+ *                 textstyle or displaystyle (default false)
+ */
+function Settings(options) {
+    // allow null options
+    options = options || {};
+    this.displayMode = get(options.displayMode, false);
+    this.throwOnError = get(options.throwOnError, true);
+    this.errorColor = get(options.errorColor, "#cc0000");
+}
+
+module.exports = Settings;
+
+
+/***/ }),
+/* 189 */
+/***/ (function(module, exports, __webpack_require__) {
+
+/**
+ * These objects store the data about the DOM nodes we create, as well as some
+ * extra data. They can then be transformed into real DOM nodes with the
+ * `toNode` function or HTML markup using `toMarkup`. They are useful for both
+ * storing extra properties on the nodes, as well as providing a way to easily
+ * work with the DOM.
+ *
+ * Similar functions for working with MathML nodes exist in mathMLTree.js.
+ */
+
+var utils = __webpack_require__(6);
+
+/**
+ * Create an HTML className based on a list of classes. In addition to joining
+ * with spaces, we also remove null or empty classes.
+ */
+var createClass = function(classes) {
+    classes = classes.slice();
+    for (var i = classes.length - 1; i >= 0; i--) {
+        if (!classes[i]) {
+            classes.splice(i, 1);
+        }
+    }
+
+    return classes.join(" ");
+};
+
+/**
+ * This node represents a span node, with a className, a list of children, and
+ * an inline style. It also contains information about its height, depth, and
+ * maxFontSize.
+ */
+function span(classes, children, height, depth, maxFontSize, style) {
+    this.classes = classes || [];
+    this.children = children || [];
+    this.height = height || 0;
+    this.depth = depth || 0;
+    this.maxFontSize = maxFontSize || 0;
+    this.style = style || {};
+    this.attributes = {};
+}
+
+/**
+ * Sets an arbitrary attribute on the span. Warning: use this wisely. Not all
+ * browsers support attributes the same, and having too many custom attributes
+ * is probably bad.
+ */
+span.prototype.setAttribute = function(attribute, value) {
+    this.attributes[attribute] = value;
+};
+
+/**
+ * Convert the span into an HTML node
+ */
+span.prototype.toNode = function() {
+    var span = document.createElement("span");
+
+    // Apply the class
+    span.className = createClass(this.classes);
+
+    // Apply inline styles
+    for (var style in this.style) {
+        if (Object.prototype.hasOwnProperty.call(this.style, style)) {
+            span.style[style] = this.style[style];
+        }
+    }
+
+    // Apply attributes
+    for (var attr in this.attributes) {
+        if (Object.prototype.hasOwnProperty.call(this.attributes, attr)) {
+            span.setAttribute(attr, this.attributes[attr]);
+        }
+    }
+
+    // Append the children, also as HTML nodes
+    for (var i = 0; i < this.children.length; i++) {
+        span.appendChild(this.children[i].toNode());
+    }
+
+    return span;
+};
+
+/**
+ * Convert the span into an HTML markup string
+ */
+span.prototype.toMarkup = function() {
+    var markup = "<span";
+
+    // Add the class
+    if (this.classes.length) {
+        markup += " class=\"";
+        markup += utils.escape(createClass(this.classes));
+        markup += "\"";
+    }
+
+    var styles = "";
+
+    // Add the styles, after hyphenation
+    for (var style in this.style) {
+        if (this.style.hasOwnProperty(style)) {
+            styles += utils.hyphenate(style) + ":" + this.style[style] + ";";
+        }
+    }
+
+    if (styles) {
+        markup += " style=\"" + utils.escape(styles) + "\"";
+    }
+
+    // Add the attributes
+    for (var attr in this.attributes) {
+        if (Object.prototype.hasOwnProperty.call(this.attributes, attr)) {
+            markup += " " + attr + "=\"";
+            markup += utils.escape(this.attributes[attr]);
+            markup += "\"";
+        }
+    }
+
+    markup += ">";
+
+    // Add the markup of the children, also as markup
+    for (var i = 0; i < this.children.length; i++) {
+        markup += this.children[i].toMarkup();
+    }
+
+    markup += "</span>";
+
+    return markup;
+};
+
+/**
+ * This node represents a document fragment, which contains elements, but when
+ * placed into the DOM doesn't have any representation itself. Thus, it only
+ * contains children and doesn't have any HTML properties. It also keeps track
+ * of a height, depth, and maxFontSize.
+ */
+function documentFragment(children, height, depth, maxFontSize) {
+    this.children = children || [];
+    this.height = height || 0;
+    this.depth = depth || 0;
+    this.maxFontSize = maxFontSize || 0;
+}
+
+/**
+ * Convert the fragment into a node
+ */
+documentFragment.prototype.toNode = function() {
+    // Create a fragment
+    var frag = document.createDocumentFragment();
+
+    // Append the children
+    for (var i = 0; i < this.children.length; i++) {
+        frag.appendChild(this.children[i].toNode());
+    }
+
+    return frag;
+};
+
+/**
+ * Convert the fragment into HTML markup
+ */
+documentFragment.prototype.toMarkup = function() {
+    var markup = "";
+
+    // Simply concatenate the markup for the children together
+    for (var i = 0; i < this.children.length; i++) {
+        markup += this.children[i].toMarkup();
+    }
+
+    return markup;
+};
+
+/**
+ * A symbol node contains information about a single symbol. It either renders
+ * to a single text node, or a span with a single text node in it, depending on
+ * whether it has CSS classes, styles, or needs italic correction.
+ */
+function symbolNode(value, height, depth, italic, skew, classes, style) {
+    this.value = value || "";
+    this.height = height || 0;
+    this.depth = depth || 0;
+    this.italic = italic || 0;
+    this.skew = skew || 0;
+    this.classes = classes || [];
+    this.style = style || {};
+    this.maxFontSize = 0;
+}
+
+/**
+ * Creates a text node or span from a symbol node. Note that a span is only
+ * created if it is needed.
+ */
+symbolNode.prototype.toNode = function() {
+    var node = document.createTextNode(this.value);
+    var span = null;
+
+    if (this.italic > 0) {
+        span = document.createElement("span");
+        span.style.marginRight = this.italic + "em";
+    }
+
+    if (this.classes.length > 0) {
+        span = span || document.createElement("span");
+        span.className = createClass(this.classes);
+    }
+
+    for (var style in this.style) {
+        if (this.style.hasOwnProperty(style)) {
+            span = span || document.createElement("span");
+            span.style[style] = this.style[style];
+        }
+    }
+
+    if (span) {
+        span.appendChild(node);
+        return span;
+    } else {
+        return node;
+    }
+};
+
+/**
+ * Creates markup for a symbol node.
+ */
+symbolNode.prototype.toMarkup = function() {
+    // TODO(alpert): More duplication than I'd like from
+    // span.prototype.toMarkup and symbolNode.prototype.toNode...
+    var needsSpan = false;
+
+    var markup = "<span";
+
+    if (this.classes.length) {
+        needsSpan = true;
+        markup += " class=\"";
+        markup += utils.escape(createClass(this.classes));
+        markup += "\"";
+    }
+
+    var styles = "";
+
+    if (this.italic > 0) {
+        styles += "margin-right:" + this.italic + "em;";
+    }
+    for (var style in this.style) {
+        if (this.style.hasOwnProperty(style)) {
+            styles += utils.hyphenate(style) + ":" + this.style[style] + ";";
+        }
+    }
+
+    if (styles) {
+        needsSpan = true;
+        markup += " style=\"" + utils.escape(styles) + "\"";
+    }
+
+    var escaped = utils.escape(this.value);
+    if (needsSpan) {
+        markup += ">";
+        markup += escaped;
+        markup += "</span>";
+        return markup;
+    } else {
+        return escaped;
+    }
+};
+
+module.exports = {
+    span: span,
+    documentFragment: documentFragment,
+    symbolNode: symbolNode,
+};
+
+
+/***/ }),
+/* 190 */
+/***/ (function(module, exports) {
+
+/**
+ * The resulting parse tree nodes of the parse tree.
+ */
+function ParseNode(type, value, mode) {
+    this.type = type;
+    this.value = value;
+    this.mode = mode;
+}
+
+module.exports = {
+    ParseNode: ParseNode,
+};
+
+
+
+/***/ }),
+/* 191 */
+/***/ (function(module, exports, __webpack_require__) {
+
+__webpack_require__(192);
+module.exports = __webpack_require__(435);
+
+
+/***/ }),
+/* 192 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue_resource__ = __webpack_require__(166);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__router_routes__ = __webpack_require__(168);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue_resource__ = __webpack_require__(218);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__router_routes__ = __webpack_require__(220);
 
 /**
  * First we will load all of this project's JavaScript dependencies which
@@ -28504,9 +33001,9 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
  * building robust, powerful web applications using Vue and Laravel.
  */
 
-__webpack_require__(141);
+__webpack_require__(193);
 
-window.Vue = __webpack_require__(14);
+window.Vue = __webpack_require__(42);
 
 
 Vue.use(__WEBPACK_IMPORTED_MODULE_0_vue_resource__["a" /* default */]);
@@ -28518,28 +33015,28 @@ Vue.use(__WEBPACK_IMPORTED_MODULE_0_vue_resource__["a" /* default */]);
  * or customize the JavaScript scaffolding to fit your unique needs.
  */
 
-Vue.component('example', __webpack_require__(170));
-Vue.component('my-component', __webpack_require__(173));
-Vue.component('chat-layout', __webpack_require__(179));
-Vue.component('user-dashboard', __webpack_require__(189));
-Vue.component('life-cycle', __webpack_require__(205));
-Vue.component('binding-html', __webpack_require__(215));
-Vue.component('event-handling', __webpack_require__(220));
-Vue.component('parent', __webpack_require__(225));
-Vue.component('api-calling', __webpack_require__(235));
-Vue.component('blog', __webpack_require__(426));
+Vue.component('example', __webpack_require__(227));
+Vue.component('my-component', __webpack_require__(230));
+Vue.component('chat-layout', __webpack_require__(236));
+Vue.component('user-dashboard', __webpack_require__(246));
+Vue.component('life-cycle', __webpack_require__(262));
+Vue.component('binding-html', __webpack_require__(272));
+Vue.component('event-handling', __webpack_require__(277));
+Vue.component('parent', __webpack_require__(282));
+Vue.component('api-calling', __webpack_require__(292));
+Vue.component('blog', __webpack_require__(423));
+Vue.component('User', __webpack_require__(430));
 
 var app = new Vue({
-  el: '#app',
-  router: __WEBPACK_IMPORTED_MODULE_1__router_routes__["a" /* default */]
+  el: '#app'
 });
 
 /***/ }),
-/* 141 */
+/* 193 */
 /***/ (function(module, exports, __webpack_require__) {
 
 
-window._ = __webpack_require__(142);
+window._ = __webpack_require__(194);
 
 /**
  * We'll load jQuery and the Bootstrap jQuery plugin which provides support
@@ -28548,9 +33045,9 @@ window._ = __webpack_require__(142);
  */
 
 try {
-  window.$ = window.jQuery = __webpack_require__(143);
+  window.$ = window.jQuery = __webpack_require__(195);
 
-  __webpack_require__(144);
+  __webpack_require__(196);
 } catch (e) {}
 
 /**
@@ -28559,7 +33056,7 @@ try {
  * CSRF token as a header based on the value of the "XSRF" token cookie.
  */
 
-window.axios = __webpack_require__(145);
+window.axios = __webpack_require__(197);
 
 window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
@@ -28593,7 +33090,7 @@ if (token) {
 // });
 
 /***/ }),
-/* 142 */
+/* 194 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(global, module) {var __WEBPACK_AMD_DEFINE_RESULT__;/**
@@ -45682,10 +50179,10 @@ if (token) {
   }
 }.call(this));
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(5), __webpack_require__(6)(module)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(10), __webpack_require__(14)(module)))
 
 /***/ }),
-/* 143 */
+/* 195 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
@@ -55945,7 +60442,7 @@ return jQuery;
 
 
 /***/ }),
-/* 144 */
+/* 196 */
 /***/ (function(module, exports) {
 
 /*!
@@ -58328,22 +62825,22 @@ if (typeof jQuery === 'undefined') {
 
 
 /***/ }),
-/* 145 */
+/* 197 */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = __webpack_require__(146);
+module.exports = __webpack_require__(198);
 
 /***/ }),
-/* 146 */
+/* 198 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
-var bind = __webpack_require__(8);
-var Axios = __webpack_require__(148);
-var defaults = __webpack_require__(7);
+var utils = __webpack_require__(5);
+var bind = __webpack_require__(36);
+var Axios = __webpack_require__(200);
+var defaults = __webpack_require__(24);
 
 /**
  * Create an instance of Axios
@@ -58376,15 +62873,15 @@ axios.create = function create(instanceConfig) {
 };
 
 // Expose Cancel & CancelToken
-axios.Cancel = __webpack_require__(13);
-axios.CancelToken = __webpack_require__(162);
-axios.isCancel = __webpack_require__(12);
+axios.Cancel = __webpack_require__(41);
+axios.CancelToken = __webpack_require__(214);
+axios.isCancel = __webpack_require__(40);
 
 // Expose all/spread
 axios.all = function all(promises) {
   return Promise.all(promises);
 };
-axios.spread = __webpack_require__(163);
+axios.spread = __webpack_require__(215);
 
 module.exports = axios;
 
@@ -58393,7 +62890,7 @@ module.exports.default = axios;
 
 
 /***/ }),
-/* 147 */
+/* 199 */
 /***/ (function(module, exports) {
 
 /*!
@@ -58420,18 +62917,18 @@ function isSlowBuffer (obj) {
 
 
 /***/ }),
-/* 148 */
+/* 200 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var defaults = __webpack_require__(7);
-var utils = __webpack_require__(4);
-var InterceptorManager = __webpack_require__(157);
-var dispatchRequest = __webpack_require__(158);
-var isAbsoluteURL = __webpack_require__(160);
-var combineURLs = __webpack_require__(161);
+var defaults = __webpack_require__(24);
+var utils = __webpack_require__(5);
+var InterceptorManager = __webpack_require__(209);
+var dispatchRequest = __webpack_require__(210);
+var isAbsoluteURL = __webpack_require__(212);
+var combineURLs = __webpack_require__(213);
 
 /**
  * Create a new instance of Axios
@@ -58513,13 +63010,13 @@ module.exports = Axios;
 
 
 /***/ }),
-/* 149 */
+/* 201 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
+var utils = __webpack_require__(5);
 
 module.exports = function normalizeHeaderName(headers, normalizedName) {
   utils.forEach(headers, function processHeader(value, name) {
@@ -58532,13 +63029,13 @@ module.exports = function normalizeHeaderName(headers, normalizedName) {
 
 
 /***/ }),
-/* 150 */
+/* 202 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var createError = __webpack_require__(11);
+var createError = __webpack_require__(39);
 
 /**
  * Resolve or reject a Promise based on response status.
@@ -58565,7 +63062,7 @@ module.exports = function settle(resolve, reject, response) {
 
 
 /***/ }),
-/* 151 */
+/* 203 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -58593,13 +63090,13 @@ module.exports = function enhanceError(error, config, code, request, response) {
 
 
 /***/ }),
-/* 152 */
+/* 204 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
+var utils = __webpack_require__(5);
 
 function encode(val) {
   return encodeURIComponent(val).
@@ -58668,13 +63165,13 @@ module.exports = function buildURL(url, params, paramsSerializer) {
 
 
 /***/ }),
-/* 153 */
+/* 205 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
+var utils = __webpack_require__(5);
 
 /**
  * Parse headers into an object
@@ -58712,13 +63209,13 @@ module.exports = function parseHeaders(headers) {
 
 
 /***/ }),
-/* 154 */
+/* 206 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
+var utils = __webpack_require__(5);
 
 module.exports = (
   utils.isStandardBrowserEnv() ?
@@ -58787,7 +63284,7 @@ module.exports = (
 
 
 /***/ }),
-/* 155 */
+/* 207 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -58830,13 +63327,13 @@ module.exports = btoa;
 
 
 /***/ }),
-/* 156 */
+/* 208 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
+var utils = __webpack_require__(5);
 
 module.exports = (
   utils.isStandardBrowserEnv() ?
@@ -58890,13 +63387,13 @@ module.exports = (
 
 
 /***/ }),
-/* 157 */
+/* 209 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
+var utils = __webpack_require__(5);
 
 function InterceptorManager() {
   this.handlers = [];
@@ -58949,16 +63446,16 @@ module.exports = InterceptorManager;
 
 
 /***/ }),
-/* 158 */
+/* 210 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
-var transformData = __webpack_require__(159);
-var isCancel = __webpack_require__(12);
-var defaults = __webpack_require__(7);
+var utils = __webpack_require__(5);
+var transformData = __webpack_require__(211);
+var isCancel = __webpack_require__(40);
+var defaults = __webpack_require__(24);
 
 /**
  * Throws a `Cancel` if cancellation has been requested.
@@ -59035,13 +63532,13 @@ module.exports = function dispatchRequest(config) {
 
 
 /***/ }),
-/* 159 */
+/* 211 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var utils = __webpack_require__(4);
+var utils = __webpack_require__(5);
 
 /**
  * Transform the data for a request or a response
@@ -59062,7 +63559,7 @@ module.exports = function transformData(data, headers, fns) {
 
 
 /***/ }),
-/* 160 */
+/* 212 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -59083,7 +63580,7 @@ module.exports = function isAbsoluteURL(url) {
 
 
 /***/ }),
-/* 161 */
+/* 213 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -59104,13 +63601,13 @@ module.exports = function combineURLs(baseURL, relativeURL) {
 
 
 /***/ }),
-/* 162 */
+/* 214 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var Cancel = __webpack_require__(13);
+var Cancel = __webpack_require__(41);
 
 /**
  * A `CancelToken` is an object that can be used to request cancellation of an operation.
@@ -59168,7 +63665,7 @@ module.exports = CancelToken;
 
 
 /***/ }),
-/* 163 */
+/* 215 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -59202,7 +63699,7 @@ module.exports = function spread(callback) {
 
 
 /***/ }),
-/* 164 */
+/* 216 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var apply = Function.prototype.apply;
@@ -59255,13 +63752,13 @@ exports._unrefActive = exports.active = function(item) {
 };
 
 // setimmediate attaches itself to the global object
-__webpack_require__(165);
+__webpack_require__(217);
 exports.setImmediate = setImmediate;
 exports.clearImmediate = clearImmediate;
 
 
 /***/ }),
-/* 165 */
+/* 217 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(global, process) {(function (global, undefined) {
@@ -59451,10 +63948,10 @@ exports.clearImmediate = clearImmediate;
     attachTo.clearImmediate = clearImmediate;
 }(typeof self === "undefined" ? typeof global === "undefined" ? this : global : self));
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(5), __webpack_require__(9)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(10), __webpack_require__(37)))
 
 /***/ }),
-/* 166 */
+/* 218 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -60552,7 +65049,7 @@ function xhrClient (request) {
 
 function nodeClient (request) {
 
-    var client = __webpack_require__(167);
+    var client = __webpack_require__(219);
 
     return new PromiseObj(function (resolve) {
 
@@ -61020,25 +65517,25 @@ if (typeof window !== 'undefined' && window.Vue) {
 
 
 /***/ }),
-/* 167 */
+/* 219 */
 /***/ (function(module, exports) {
 
 /* (ignored) */
 
 /***/ }),
-/* 168 */
+/* 220 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue__ = __webpack_require__(14);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue__ = __webpack_require__(42);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_vue__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_vue_router__ = __webpack_require__(169);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_vue_router__ = __webpack_require__(221);
 
 
 
 __WEBPACK_IMPORTED_MODULE_0_vue___default.a.use(__WEBPACK_IMPORTED_MODULE_1_vue_router__["a" /* default */]);
 
-/* harmony default export */ __webpack_exports__["a"] = (new __WEBPACK_IMPORTED_MODULE_1_vue_router__["a" /* default */]({
+/* unused harmony default export */ var _unused_webpack_default_export = (new __WEBPACK_IMPORTED_MODULE_1_vue_router__["a" /* default */]({
 	mode: 'history',
 	// base: '/app',
 	linkActiveClass: 'active',
@@ -61049,7 +65546,7 @@ __WEBPACK_IMPORTED_MODULE_0_vue___default.a.use(__WEBPACK_IMPORTED_MODULE_1_vue_
 }));
 
 /***/ }),
-/* 169 */
+/* 221 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -63679,15 +68176,114 @@ if (inBrowser && window.Vue) {
 
 
 /***/ }),
-/* 170 */
+/* 222 */,
+/* 223 */,
+/* 224 */,
+/* 225 */,
+/* 226 */
+/***/ (function(module, exports) {
+
+
+/**
+ * When source maps are enabled, `style-loader` uses a link element with a data-uri to
+ * embed the css on the page. This breaks all relative urls because now they are relative to a
+ * bundle instead of the current page.
+ *
+ * One solution is to only use full urls, but that may be impossible.
+ *
+ * Instead, this function "fixes" the relative urls to be absolute according to the current page location.
+ *
+ * A rudimentary test suite is located at `test/fixUrls.js` and can be run via the `npm test` command.
+ *
+ */
+
+module.exports = function (css) {
+  // get current location
+  var location = typeof window !== "undefined" && window.location;
+
+  if (!location) {
+    throw new Error("fixUrls requires window.location");
+  }
+
+	// blank or null?
+	if (!css || typeof css !== "string") {
+	  return css;
+  }
+
+  var baseUrl = location.protocol + "//" + location.host;
+  var currentDir = baseUrl + location.pathname.replace(/\/[^\/]*$/, "/");
+
+	// convert each url(...)
+	/*
+	This regular expression is just a way to recursively match brackets within
+	a string.
+
+	 /url\s*\(  = Match on the word "url" with any whitespace after it and then a parens
+	   (  = Start a capturing group
+	     (?:  = Start a non-capturing group
+	         [^)(]  = Match anything that isn't a parentheses
+	         |  = OR
+	         \(  = Match a start parentheses
+	             (?:  = Start another non-capturing groups
+	                 [^)(]+  = Match anything that isn't a parentheses
+	                 |  = OR
+	                 \(  = Match a start parentheses
+	                     [^)(]*  = Match anything that isn't a parentheses
+	                 \)  = Match a end parentheses
+	             )  = End Group
+              *\) = Match anything and then a close parens
+          )  = Close non-capturing group
+          *  = Match anything
+       )  = Close capturing group
+	 \)  = Match a close parens
+
+	 /gi  = Get all matches, not the first.  Be case insensitive.
+	 */
+	var fixedCss = css.replace(/url\s*\(((?:[^)(]|\((?:[^)(]+|\([^)(]*\))*\))*)\)/gi, function(fullMatch, origUrl) {
+		// strip quotes (if they exist)
+		var unquotedOrigUrl = origUrl
+			.trim()
+			.replace(/^"(.*)"$/, function(o, $1){ return $1; })
+			.replace(/^'(.*)'$/, function(o, $1){ return $1; });
+
+		// already a full url? no change
+		if (/^(#|data:|http:\/\/|https:\/\/|file:\/\/\/)/i.test(unquotedOrigUrl)) {
+		  return fullMatch;
+		}
+
+		// convert the url to a full url
+		var newUrl;
+
+		if (unquotedOrigUrl.indexOf("//") === 0) {
+		  	//TODO: should we add protocol?
+			newUrl = unquotedOrigUrl;
+		} else if (unquotedOrigUrl.indexOf("/") === 0) {
+			// path should be relative to the base url
+			newUrl = baseUrl + unquotedOrigUrl; // already starts with '/'
+		} else {
+			// path should be relative to current directory
+			newUrl = currentDir + unquotedOrigUrl.replace(/^\.\//, ""); // Strip leading './'
+		}
+
+		// send back the fixed url(...)
+		return "url(" + JSON.stringify(newUrl) + ")";
+	});
+
+	// send back the fixed css
+	return fixedCss;
+};
+
+
+/***/ }),
+/* 227 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(171)
+var __vue_script__ = __webpack_require__(228)
 /* template */
-var __vue_template__ = __webpack_require__(172)
+var __vue_template__ = __webpack_require__(229)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -63727,7 +68323,7 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 171 */
+/* 228 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -63756,7 +68352,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 172 */
+/* 229 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -63799,19 +68395,19 @@ if (false) {
 }
 
 /***/ }),
-/* 173 */
+/* 230 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(174)
+  __webpack_require__(231)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(177)
+var __vue_script__ = __webpack_require__(234)
 /* template */
-var __vue_template__ = __webpack_require__(178)
+var __vue_template__ = __webpack_require__(235)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -63851,17 +68447,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 174 */
+/* 231 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(175);
+var content = __webpack_require__(232);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("5e988814", content, false);
+var update = __webpack_require__(4)("5e988814", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -63877,7 +68473,7 @@ if(false) {
 }
 
 /***/ }),
-/* 175 */
+/* 232 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -63891,7 +68487,7 @@ exports.push([module.i, "\n.my-component[data-v-261983ca] {\n  color: red;\n}\n"
 
 
 /***/ }),
-/* 176 */
+/* 233 */
 /***/ (function(module, exports) {
 
 /**
@@ -63924,7 +68520,7 @@ module.exports = function listToStyles (parentId, list) {
 
 
 /***/ }),
-/* 177 */
+/* 234 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -63951,7 +68547,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 178 */
+/* 235 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -63973,19 +68569,19 @@ if (false) {
 }
 
 /***/ }),
-/* 179 */
+/* 236 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(180)
+  __webpack_require__(237)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(182)
+var __vue_script__ = __webpack_require__(239)
 /* template */
-var __vue_template__ = __webpack_require__(188)
+var __vue_template__ = __webpack_require__(245)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -64025,17 +68621,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 180 */
+/* 237 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(181);
+var content = __webpack_require__(238);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("512bc13a", content, false);
+var update = __webpack_require__(4)("512bc13a", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -64051,7 +68647,7 @@ if(false) {
 }
 
 /***/ }),
-/* 181 */
+/* 238 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -64065,12 +68661,12 @@ exports.push([module.i, "\n.chat-layout[data-v-064cc519] {\n  border: solid 1px 
 
 
 /***/ }),
-/* 182 */
+/* 239 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__ChatItem_vue__ = __webpack_require__(183);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__ChatItem_vue__ = __webpack_require__(240);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__ChatItem_vue___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0__ChatItem_vue__);
 //
 //
@@ -64151,19 +68747,19 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 183 */
+/* 240 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(184)
+  __webpack_require__(241)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(186)
+var __vue_script__ = __webpack_require__(243)
 /* template */
-var __vue_template__ = __webpack_require__(187)
+var __vue_template__ = __webpack_require__(244)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -64203,17 +68799,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 184 */
+/* 241 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(185);
+var content = __webpack_require__(242);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("1454a5eb", content, false);
+var update = __webpack_require__(4)("1454a5eb", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -64229,7 +68825,7 @@ if(false) {
 }
 
 /***/ }),
-/* 185 */
+/* 242 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -64243,7 +68839,7 @@ exports.push([module.i, "\n.current-user[data-v-69005242] {\n  color: red;\n}\n"
 
 
 /***/ }),
-/* 186 */
+/* 243 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -64264,7 +68860,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 187 */
+/* 244 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -64305,7 +68901,7 @@ if (false) {
 }
 
 /***/ }),
-/* 188 */
+/* 245 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -64394,19 +68990,19 @@ if (false) {
 }
 
 /***/ }),
-/* 189 */
+/* 246 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(190)
+  __webpack_require__(247)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(192)
+var __vue_script__ = __webpack_require__(249)
 /* template */
-var __vue_template__ = __webpack_require__(204)
+var __vue_template__ = __webpack_require__(261)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -64446,17 +69042,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 190 */
+/* 247 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(191);
+var content = __webpack_require__(248);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("af733ce6", content, false);
+var update = __webpack_require__(4)("af733ce6", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -64472,7 +69068,7 @@ if(false) {
 }
 
 /***/ }),
-/* 191 */
+/* 248 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -64486,14 +69082,14 @@ exports.push([module.i, "", ""]);
 
 
 /***/ }),
-/* 192 */
+/* 249 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__ListUser_vue__ = __webpack_require__(193);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__ListUser_vue__ = __webpack_require__(250);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__ListUser_vue___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0__ListUser_vue__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__UserDetail_vue__ = __webpack_require__(199);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__UserDetail_vue__ = __webpack_require__(256);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__UserDetail_vue___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1__UserDetail_vue__);
 //
 //
@@ -64538,19 +69134,19 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 193 */
+/* 250 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(194)
+  __webpack_require__(251)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(196)
+var __vue_script__ = __webpack_require__(253)
 /* template */
-var __vue_template__ = __webpack_require__(198)
+var __vue_template__ = __webpack_require__(255)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -64590,17 +69186,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 194 */
+/* 251 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(195);
+var content = __webpack_require__(252);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("4af08b9b", content, false);
+var update = __webpack_require__(4)("4af08b9b", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -64616,7 +69212,7 @@ if(false) {
 }
 
 /***/ }),
-/* 195 */
+/* 252 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -64630,12 +69226,12 @@ exports.push([module.i, "\n.tbl-list-user[data-v-1a3c1e40] {\n  width: 100%;\n}\
 
 
 /***/ }),
-/* 196 */
+/* 253 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__data_json__ = __webpack_require__(197);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__data_json__ = __webpack_require__(254);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__data_json___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0__data_json__);
 //
 //
@@ -64677,13 +69273,13 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 197 */
+/* 254 */
 /***/ (function(module, exports) {
 
 module.exports = [{"gender":"male","name":{"title":"mr","first":"romain","last":"hoogmoed"},"location":{"street":"1861 jan pieterszoon coenstraat","city":"maasdriel","state":"zeeland","postcode":69217},"email":"romain.hoogmoed@example.com","dob":"1983-07-14 07:29:45"},{"gender":"male","name":{"title":"mr","first":"dominic","last":"bouchard"},"location":{"street":"7985 disputed rd","city":"belmont","state":"nunavut","postcode":37717},"email":"dominic.bouchard@example.com","dob":"1969-05-21 19:12:25"},{"gender":"female","name":{"title":"ms","first":"beatrice","last":"andersen"},"location":{"street":"2938 lakeview ave","city":"sutton","state":"saskatchewan","postcode":71700},"email":"beatrice.andersen@example.com","dob":"1956-10-09 20:04:54"}]
 
 /***/ }),
-/* 198 */
+/* 255 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -64753,19 +69349,19 @@ if (false) {
 }
 
 /***/ }),
-/* 199 */
+/* 256 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(200)
+  __webpack_require__(257)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(202)
+var __vue_script__ = __webpack_require__(259)
 /* template */
-var __vue_template__ = __webpack_require__(203)
+var __vue_template__ = __webpack_require__(260)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -64805,17 +69401,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 200 */
+/* 257 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(201);
+var content = __webpack_require__(258);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("7835bf14", content, false);
+var update = __webpack_require__(4)("7835bf14", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -64831,7 +69427,7 @@ if(false) {
 }
 
 /***/ }),
-/* 201 */
+/* 258 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -64845,7 +69441,7 @@ exports.push([module.i, "", ""]);
 
 
 /***/ }),
-/* 202 */
+/* 259 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -64883,7 +69479,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 203 */
+/* 260 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -64941,7 +69537,7 @@ if (false) {
 }
 
 /***/ }),
-/* 204 */
+/* 261 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -64996,19 +69592,19 @@ if (false) {
 }
 
 /***/ }),
-/* 205 */
+/* 262 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(206)
+  __webpack_require__(263)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(208)
+var __vue_script__ = __webpack_require__(265)
 /* template */
-var __vue_template__ = __webpack_require__(214)
+var __vue_template__ = __webpack_require__(271)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -65048,17 +69644,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 206 */
+/* 263 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(207);
+var content = __webpack_require__(264);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("324825da", content, false);
+var update = __webpack_require__(4)("324825da", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -65074,7 +69670,7 @@ if(false) {
 }
 
 /***/ }),
-/* 207 */
+/* 264 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -65088,12 +69684,12 @@ exports.push([module.i, "", ""]);
 
 
 /***/ }),
-/* 208 */
+/* 265 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__Test_vue__ = __webpack_require__(209);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__Test_vue__ = __webpack_require__(266);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__Test_vue___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0__Test_vue__);
 //
 //
@@ -65146,19 +69742,19 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 209 */
+/* 266 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(210)
+  __webpack_require__(267)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(212)
+var __vue_script__ = __webpack_require__(269)
 /* template */
-var __vue_template__ = __webpack_require__(213)
+var __vue_template__ = __webpack_require__(270)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -65198,17 +69794,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 210 */
+/* 267 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(211);
+var content = __webpack_require__(268);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("621d810e", content, false);
+var update = __webpack_require__(4)("621d810e", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -65224,7 +69820,7 @@ if(false) {
 }
 
 /***/ }),
-/* 211 */
+/* 268 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -65238,7 +69834,7 @@ exports.push([module.i, "\n\n\n\n\n\n\n\n\n\n\n\n\n", ""]);
 
 
 /***/ }),
-/* 212 */
+/* 269 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -65255,7 +69851,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 213 */
+/* 270 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -65275,7 +69871,7 @@ if (false) {
 }
 
 /***/ }),
-/* 214 */
+/* 271 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -65319,19 +69915,19 @@ if (false) {
 }
 
 /***/ }),
-/* 215 */
+/* 272 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(216)
+  __webpack_require__(273)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(218)
+var __vue_script__ = __webpack_require__(275)
 /* template */
-var __vue_template__ = __webpack_require__(219)
+var __vue_template__ = __webpack_require__(276)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -65371,17 +69967,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 216 */
+/* 273 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(217);
+var content = __webpack_require__(274);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("247c0bda", content, false);
+var update = __webpack_require__(4)("247c0bda", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -65397,7 +69993,7 @@ if(false) {
 }
 
 /***/ }),
-/* 217 */
+/* 274 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -65411,7 +70007,7 @@ exports.push([module.i, "", ""]);
 
 
 /***/ }),
-/* 218 */
+/* 275 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -65439,7 +70035,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 219 */
+/* 276 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -65490,19 +70086,19 @@ if (false) {
 }
 
 /***/ }),
-/* 220 */
+/* 277 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(221)
+  __webpack_require__(278)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(223)
+var __vue_script__ = __webpack_require__(280)
 /* template */
-var __vue_template__ = __webpack_require__(224)
+var __vue_template__ = __webpack_require__(281)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -65542,17 +70138,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 221 */
+/* 278 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(222);
+var content = __webpack_require__(279);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("d0347eae", content, false);
+var update = __webpack_require__(4)("d0347eae", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -65568,7 +70164,7 @@ if(false) {
 }
 
 /***/ }),
-/* 222 */
+/* 279 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -65582,7 +70178,7 @@ exports.push([module.i, "", ""]);
 
 
 /***/ }),
-/* 223 */
+/* 280 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -65605,7 +70201,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 224 */
+/* 281 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -65640,7 +70236,7 @@ if (false) {
 }
 
 /***/ }),
-/* 225 */
+/* 282 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(module) {var disposed = false
@@ -65648,21 +70244,21 @@ var cssModules = {}
 module.hot && module.hot.accept(["!!vue-style-loader!css-loader?{\"localIdentName\":\"[hash:base64]_0\",\"importLoaders\":true,\"modules\":true}!../../../../node_modules/vue-loader/lib/style-compiler/index?{\"vue\":true,\"id\":\"data-v-cec38ebe\",\"scoped\":true,\"hasInlineConfig\":true}!sass-loader!../../../../node_modules/vue-loader/lib/selector?type=styles&index=0&bustCache!./Parent.vue"], function () {
   var oldLocals = cssModules["$style"]
   if (!oldLocals) return
-  var newLocals = __webpack_require__(15)
+  var newLocals = __webpack_require__(44)
   if (JSON.stringify(newLocals) === JSON.stringify(oldLocals)) return
   cssModules["$style"] = newLocals
-  __webpack_require__(227).rerender("data-v-cec38ebe")
+  __webpack_require__(284).rerender("data-v-cec38ebe")
 })
 function injectStyle (ssrContext) {
   if (disposed) return
-  cssModules["$style"] = __webpack_require__(15)
+  cssModules["$style"] = __webpack_require__(44)
 Object.defineProperty(this, "$style", { get: function () { return cssModules["$style"] }})
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(228)
+var __vue_script__ = __webpack_require__(285)
 /* template */
-var __vue_template__ = __webpack_require__(234)
+var __vue_template__ = __webpack_require__(291)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -65704,10 +70300,10 @@ if (false) {(function () {
 
 module.exports = Component.exports
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(6)(module)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)(module)))
 
 /***/ }),
-/* 226 */
+/* 283 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -65724,7 +70320,7 @@ exports.locals = {
 };
 
 /***/ }),
-/* 227 */
+/* 284 */
 /***/ (function(module, exports) {
 
 var Vue // late bind
@@ -65958,12 +70554,12 @@ exports.reload = tryWrap(function (id, options) {
 
 
 /***/ }),
-/* 228 */
+/* 285 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__Child_vue__ = __webpack_require__(229);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__Child_vue__ = __webpack_require__(286);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__Child_vue___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0__Child_vue__);
 //
 //
@@ -65986,19 +70582,19 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 229 */
+/* 286 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(230)
+  __webpack_require__(287)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(232)
+var __vue_script__ = __webpack_require__(289)
 /* template */
-var __vue_template__ = __webpack_require__(233)
+var __vue_template__ = __webpack_require__(290)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -66038,17 +70634,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 230 */
+/* 287 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(231);
+var content = __webpack_require__(288);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("4e8427a3", content, false);
+var update = __webpack_require__(4)("4e8427a3", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -66064,7 +70660,7 @@ if(false) {
 }
 
 /***/ }),
-/* 231 */
+/* 288 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -66078,7 +70674,7 @@ exports.push([module.i, "\n.welcome-text[data-v-41b88f75] {\n  color: blue;\n}\n
 
 
 /***/ }),
-/* 232 */
+/* 289 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -66093,7 +70689,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 /* harmony default export */ __webpack_exports__["default"] = ({});
 
 /***/ }),
-/* 233 */
+/* 290 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -66115,7 +70711,7 @@ if (false) {
 }
 
 /***/ }),
-/* 234 */
+/* 291 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -66146,19 +70742,19 @@ if (false) {
 }
 
 /***/ }),
-/* 235 */
+/* 292 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(236)
+  __webpack_require__(293)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(238)
+var __vue_script__ = __webpack_require__(295)
 /* template */
-var __vue_template__ = __webpack_require__(240)
+var __vue_template__ = __webpack_require__(422)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -66198,17 +70794,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 236 */
+/* 293 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(237);
+var content = __webpack_require__(294);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("5366a48e", content, false);
+var update = __webpack_require__(4)("5366a48e", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -66224,7 +70820,7 @@ if(false) {
 }
 
 /***/ }),
-/* 237 */
+/* 294 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -66238,14 +70834,14 @@ exports.push([module.i, "\n.error span[data-v-4ce99dc1] {\n  color: red;\n}\n", 
 
 
 /***/ }),
-/* 238 */
+/* 295 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_moment__ = __webpack_require__(0);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_moment___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_moment__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_vue_markdown__ = __webpack_require__(300);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_vue_markdown__ = __webpack_require__(168);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_vue_markdown___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_vue_markdown__);
 //
 //
@@ -66392,256 +70988,256 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 239 */
+/* 296 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var map = {
-	"./af": 16,
-	"./af.js": 16,
-	"./ar": 17,
-	"./ar-dz": 18,
-	"./ar-dz.js": 18,
-	"./ar-kw": 19,
-	"./ar-kw.js": 19,
-	"./ar-ly": 20,
-	"./ar-ly.js": 20,
-	"./ar-ma": 21,
-	"./ar-ma.js": 21,
-	"./ar-sa": 22,
-	"./ar-sa.js": 22,
-	"./ar-tn": 23,
-	"./ar-tn.js": 23,
-	"./ar.js": 17,
-	"./az": 24,
-	"./az.js": 24,
-	"./be": 25,
-	"./be.js": 25,
-	"./bg": 26,
-	"./bg.js": 26,
-	"./bm": 27,
-	"./bm.js": 27,
-	"./bn": 28,
-	"./bn.js": 28,
-	"./bo": 29,
-	"./bo.js": 29,
-	"./br": 30,
-	"./br.js": 30,
-	"./bs": 31,
-	"./bs.js": 31,
-	"./ca": 32,
-	"./ca.js": 32,
-	"./cs": 33,
-	"./cs.js": 33,
-	"./cv": 34,
-	"./cv.js": 34,
-	"./cy": 35,
-	"./cy.js": 35,
-	"./da": 36,
-	"./da.js": 36,
-	"./de": 37,
-	"./de-at": 38,
-	"./de-at.js": 38,
-	"./de-ch": 39,
-	"./de-ch.js": 39,
-	"./de.js": 37,
-	"./dv": 40,
-	"./dv.js": 40,
-	"./el": 41,
-	"./el.js": 41,
-	"./en-au": 42,
-	"./en-au.js": 42,
-	"./en-ca": 43,
-	"./en-ca.js": 43,
-	"./en-gb": 44,
-	"./en-gb.js": 44,
-	"./en-ie": 45,
-	"./en-ie.js": 45,
-	"./en-il": 46,
-	"./en-il.js": 46,
-	"./en-nz": 47,
-	"./en-nz.js": 47,
-	"./eo": 48,
-	"./eo.js": 48,
-	"./es": 49,
-	"./es-do": 50,
-	"./es-do.js": 50,
-	"./es-us": 51,
-	"./es-us.js": 51,
-	"./es.js": 49,
-	"./et": 52,
-	"./et.js": 52,
-	"./eu": 53,
-	"./eu.js": 53,
-	"./fa": 54,
-	"./fa.js": 54,
-	"./fi": 55,
-	"./fi.js": 55,
-	"./fo": 56,
-	"./fo.js": 56,
-	"./fr": 57,
-	"./fr-ca": 58,
-	"./fr-ca.js": 58,
-	"./fr-ch": 59,
-	"./fr-ch.js": 59,
-	"./fr.js": 57,
-	"./fy": 60,
-	"./fy.js": 60,
-	"./gd": 61,
-	"./gd.js": 61,
-	"./gl": 62,
-	"./gl.js": 62,
-	"./gom-latn": 63,
-	"./gom-latn.js": 63,
-	"./gu": 64,
-	"./gu.js": 64,
-	"./he": 65,
-	"./he.js": 65,
-	"./hi": 66,
-	"./hi.js": 66,
-	"./hr": 67,
-	"./hr.js": 67,
-	"./hu": 68,
-	"./hu.js": 68,
-	"./hy-am": 69,
-	"./hy-am.js": 69,
-	"./id": 70,
-	"./id.js": 70,
-	"./is": 71,
-	"./is.js": 71,
-	"./it": 72,
-	"./it.js": 72,
-	"./ja": 73,
-	"./ja.js": 73,
-	"./jv": 74,
-	"./jv.js": 74,
-	"./ka": 75,
-	"./ka.js": 75,
-	"./kk": 76,
-	"./kk.js": 76,
-	"./km": 77,
-	"./km.js": 77,
-	"./kn": 78,
-	"./kn.js": 78,
-	"./ko": 79,
-	"./ko.js": 79,
-	"./ky": 80,
-	"./ky.js": 80,
-	"./lb": 81,
-	"./lb.js": 81,
-	"./lo": 82,
-	"./lo.js": 82,
-	"./lt": 83,
-	"./lt.js": 83,
-	"./lv": 84,
-	"./lv.js": 84,
-	"./me": 85,
-	"./me.js": 85,
-	"./mi": 86,
-	"./mi.js": 86,
-	"./mk": 87,
-	"./mk.js": 87,
-	"./ml": 88,
-	"./ml.js": 88,
-	"./mn": 89,
-	"./mn.js": 89,
-	"./mr": 90,
-	"./mr.js": 90,
-	"./ms": 91,
-	"./ms-my": 92,
-	"./ms-my.js": 92,
-	"./ms.js": 91,
-	"./mt": 93,
-	"./mt.js": 93,
-	"./my": 94,
-	"./my.js": 94,
-	"./nb": 95,
-	"./nb.js": 95,
-	"./ne": 96,
-	"./ne.js": 96,
-	"./nl": 97,
-	"./nl-be": 98,
-	"./nl-be.js": 98,
-	"./nl.js": 97,
-	"./nn": 99,
-	"./nn.js": 99,
-	"./pa-in": 100,
-	"./pa-in.js": 100,
-	"./pl": 101,
-	"./pl.js": 101,
-	"./pt": 102,
-	"./pt-br": 103,
-	"./pt-br.js": 103,
-	"./pt.js": 102,
-	"./ro": 104,
-	"./ro.js": 104,
-	"./ru": 105,
-	"./ru.js": 105,
-	"./sd": 106,
-	"./sd.js": 106,
-	"./se": 107,
-	"./se.js": 107,
-	"./si": 108,
-	"./si.js": 108,
-	"./sk": 109,
-	"./sk.js": 109,
-	"./sl": 110,
-	"./sl.js": 110,
-	"./sq": 111,
-	"./sq.js": 111,
-	"./sr": 112,
-	"./sr-cyrl": 113,
-	"./sr-cyrl.js": 113,
-	"./sr.js": 112,
-	"./ss": 114,
-	"./ss.js": 114,
-	"./sv": 115,
-	"./sv.js": 115,
-	"./sw": 116,
-	"./sw.js": 116,
-	"./ta": 117,
-	"./ta.js": 117,
-	"./te": 118,
-	"./te.js": 118,
-	"./tet": 119,
-	"./tet.js": 119,
-	"./tg": 120,
-	"./tg.js": 120,
-	"./th": 121,
-	"./th.js": 121,
-	"./tl-ph": 122,
-	"./tl-ph.js": 122,
-	"./tlh": 123,
-	"./tlh.js": 123,
-	"./tr": 124,
-	"./tr.js": 124,
-	"./tzl": 125,
-	"./tzl.js": 125,
-	"./tzm": 126,
-	"./tzm-latn": 127,
-	"./tzm-latn.js": 127,
-	"./tzm.js": 126,
-	"./ug-cn": 128,
-	"./ug-cn.js": 128,
-	"./uk": 129,
-	"./uk.js": 129,
-	"./ur": 130,
-	"./ur.js": 130,
-	"./uz": 131,
-	"./uz-latn": 132,
-	"./uz-latn.js": 132,
-	"./uz.js": 131,
-	"./vi": 133,
-	"./vi.js": 133,
-	"./x-pseudo": 134,
-	"./x-pseudo.js": 134,
-	"./yo": 135,
-	"./yo.js": 135,
-	"./zh-cn": 136,
-	"./zh-cn.js": 136,
-	"./zh-hk": 137,
-	"./zh-hk.js": 137,
-	"./zh-tw": 138,
-	"./zh-tw.js": 138
+	"./af": 45,
+	"./af.js": 45,
+	"./ar": 46,
+	"./ar-dz": 47,
+	"./ar-dz.js": 47,
+	"./ar-kw": 48,
+	"./ar-kw.js": 48,
+	"./ar-ly": 49,
+	"./ar-ly.js": 49,
+	"./ar-ma": 50,
+	"./ar-ma.js": 50,
+	"./ar-sa": 51,
+	"./ar-sa.js": 51,
+	"./ar-tn": 52,
+	"./ar-tn.js": 52,
+	"./ar.js": 46,
+	"./az": 53,
+	"./az.js": 53,
+	"./be": 54,
+	"./be.js": 54,
+	"./bg": 55,
+	"./bg.js": 55,
+	"./bm": 56,
+	"./bm.js": 56,
+	"./bn": 57,
+	"./bn.js": 57,
+	"./bo": 58,
+	"./bo.js": 58,
+	"./br": 59,
+	"./br.js": 59,
+	"./bs": 60,
+	"./bs.js": 60,
+	"./ca": 61,
+	"./ca.js": 61,
+	"./cs": 62,
+	"./cs.js": 62,
+	"./cv": 63,
+	"./cv.js": 63,
+	"./cy": 64,
+	"./cy.js": 64,
+	"./da": 65,
+	"./da.js": 65,
+	"./de": 66,
+	"./de-at": 67,
+	"./de-at.js": 67,
+	"./de-ch": 68,
+	"./de-ch.js": 68,
+	"./de.js": 66,
+	"./dv": 69,
+	"./dv.js": 69,
+	"./el": 70,
+	"./el.js": 70,
+	"./en-au": 71,
+	"./en-au.js": 71,
+	"./en-ca": 72,
+	"./en-ca.js": 72,
+	"./en-gb": 73,
+	"./en-gb.js": 73,
+	"./en-ie": 74,
+	"./en-ie.js": 74,
+	"./en-il": 75,
+	"./en-il.js": 75,
+	"./en-nz": 76,
+	"./en-nz.js": 76,
+	"./eo": 77,
+	"./eo.js": 77,
+	"./es": 78,
+	"./es-do": 79,
+	"./es-do.js": 79,
+	"./es-us": 80,
+	"./es-us.js": 80,
+	"./es.js": 78,
+	"./et": 81,
+	"./et.js": 81,
+	"./eu": 82,
+	"./eu.js": 82,
+	"./fa": 83,
+	"./fa.js": 83,
+	"./fi": 84,
+	"./fi.js": 84,
+	"./fo": 85,
+	"./fo.js": 85,
+	"./fr": 86,
+	"./fr-ca": 87,
+	"./fr-ca.js": 87,
+	"./fr-ch": 88,
+	"./fr-ch.js": 88,
+	"./fr.js": 86,
+	"./fy": 89,
+	"./fy.js": 89,
+	"./gd": 90,
+	"./gd.js": 90,
+	"./gl": 91,
+	"./gl.js": 91,
+	"./gom-latn": 92,
+	"./gom-latn.js": 92,
+	"./gu": 93,
+	"./gu.js": 93,
+	"./he": 94,
+	"./he.js": 94,
+	"./hi": 95,
+	"./hi.js": 95,
+	"./hr": 96,
+	"./hr.js": 96,
+	"./hu": 97,
+	"./hu.js": 97,
+	"./hy-am": 98,
+	"./hy-am.js": 98,
+	"./id": 99,
+	"./id.js": 99,
+	"./is": 100,
+	"./is.js": 100,
+	"./it": 101,
+	"./it.js": 101,
+	"./ja": 102,
+	"./ja.js": 102,
+	"./jv": 103,
+	"./jv.js": 103,
+	"./ka": 104,
+	"./ka.js": 104,
+	"./kk": 105,
+	"./kk.js": 105,
+	"./km": 106,
+	"./km.js": 106,
+	"./kn": 107,
+	"./kn.js": 107,
+	"./ko": 108,
+	"./ko.js": 108,
+	"./ky": 109,
+	"./ky.js": 109,
+	"./lb": 110,
+	"./lb.js": 110,
+	"./lo": 111,
+	"./lo.js": 111,
+	"./lt": 112,
+	"./lt.js": 112,
+	"./lv": 113,
+	"./lv.js": 113,
+	"./me": 114,
+	"./me.js": 114,
+	"./mi": 115,
+	"./mi.js": 115,
+	"./mk": 116,
+	"./mk.js": 116,
+	"./ml": 117,
+	"./ml.js": 117,
+	"./mn": 118,
+	"./mn.js": 118,
+	"./mr": 119,
+	"./mr.js": 119,
+	"./ms": 120,
+	"./ms-my": 121,
+	"./ms-my.js": 121,
+	"./ms.js": 120,
+	"./mt": 122,
+	"./mt.js": 122,
+	"./my": 123,
+	"./my.js": 123,
+	"./nb": 124,
+	"./nb.js": 124,
+	"./ne": 125,
+	"./ne.js": 125,
+	"./nl": 126,
+	"./nl-be": 127,
+	"./nl-be.js": 127,
+	"./nl.js": 126,
+	"./nn": 128,
+	"./nn.js": 128,
+	"./pa-in": 129,
+	"./pa-in.js": 129,
+	"./pl": 130,
+	"./pl.js": 130,
+	"./pt": 131,
+	"./pt-br": 132,
+	"./pt-br.js": 132,
+	"./pt.js": 131,
+	"./ro": 133,
+	"./ro.js": 133,
+	"./ru": 134,
+	"./ru.js": 134,
+	"./sd": 135,
+	"./sd.js": 135,
+	"./se": 136,
+	"./se.js": 136,
+	"./si": 137,
+	"./si.js": 137,
+	"./sk": 138,
+	"./sk.js": 138,
+	"./sl": 139,
+	"./sl.js": 139,
+	"./sq": 140,
+	"./sq.js": 140,
+	"./sr": 141,
+	"./sr-cyrl": 142,
+	"./sr-cyrl.js": 142,
+	"./sr.js": 141,
+	"./ss": 143,
+	"./ss.js": 143,
+	"./sv": 144,
+	"./sv.js": 144,
+	"./sw": 145,
+	"./sw.js": 145,
+	"./ta": 146,
+	"./ta.js": 146,
+	"./te": 147,
+	"./te.js": 147,
+	"./tet": 148,
+	"./tet.js": 148,
+	"./tg": 149,
+	"./tg.js": 149,
+	"./th": 150,
+	"./th.js": 150,
+	"./tl-ph": 151,
+	"./tl-ph.js": 151,
+	"./tlh": 152,
+	"./tlh.js": 152,
+	"./tr": 153,
+	"./tr.js": 153,
+	"./tzl": 154,
+	"./tzl.js": 154,
+	"./tzm": 155,
+	"./tzm-latn": 156,
+	"./tzm-latn.js": 156,
+	"./tzm.js": 155,
+	"./ug-cn": 157,
+	"./ug-cn.js": 157,
+	"./uk": 158,
+	"./uk.js": 158,
+	"./ur": 159,
+	"./ur.js": 159,
+	"./uz": 160,
+	"./uz-latn": 161,
+	"./uz-latn.js": 161,
+	"./uz.js": 160,
+	"./vi": 162,
+	"./vi.js": 162,
+	"./x-pseudo": 163,
+	"./x-pseudo.js": 163,
+	"./yo": 164,
+	"./yo.js": 164,
+	"./zh-cn": 165,
+	"./zh-cn.js": 165,
+	"./zh-hk": 166,
+	"./zh-hk.js": 166,
+	"./zh-tw": 167,
+	"./zh-tw.js": 167
 };
 function webpackContext(req) {
 	return __webpack_require__(webpackContextResolve(req));
@@ -66657,4463 +71253,32 @@ webpackContext.keys = function webpackContextKeys() {
 };
 webpackContext.resolve = webpackContextResolve;
 module.exports = webpackContext;
-webpackContext.id = 239;
-
-/***/ }),
-/* 240 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var render = function() {
-  var _vm = this
-  var _h = _vm.$createElement
-  var _c = _vm._self._c || _h
-  return _c(
-    "div",
-    { staticClass: "api-calling" },
-    [
-      _c("vue-markdown", { attrs: { emoji: true } }, [
-        _vm._v("this is the default slot `hey` :)")
-      ]),
-      _vm._v(" "),
-      _vm.errors.length
-        ? _c(
-            "div",
-            { staticClass: "error" },
-            [
-              _vm._l(_vm.errors, function(err) {
-                return _c("span", [_vm._v("\n\t\t\t" + _vm._s(err) + "\n\t\t")])
-              }),
-              _vm._v(" "),
-              _c("hr")
-            ],
-            2
-          )
-        : _vm._e(),
-      _vm._v(" "),
-      _c("div", { staticClass: "create-form" }, [
-        _c("div", { staticClass: "product-name-input form-group" }, [
-          _c("input", {
-            directives: [
-              {
-                name: "model",
-                rawName: "v-model",
-                value: _vm.product.name,
-                expression: "product.name"
-              }
-            ],
-            staticClass: "form-control",
-            attrs: { type: "text" },
-            domProps: { value: _vm.product.name },
-            on: {
-              input: function($event) {
-                if ($event.target.composing) {
-                  return
-                }
-                _vm.$set(_vm.product, "name", $event.target.value)
-              }
-            }
-          })
-        ]),
-        _vm._v(" "),
-        _c("div", { staticClass: "product-name-input form-group" }, [
-          _c("input", {
-            directives: [
-              {
-                name: "model",
-                rawName: "v-model.number",
-                value: _vm.product.price,
-                expression: "product.price",
-                modifiers: { number: true }
-              }
-            ],
-            staticClass: "form-control",
-            attrs: { type: "text" },
-            domProps: { value: _vm.product.price },
-            on: {
-              input: function($event) {
-                if ($event.target.composing) {
-                  return
-                }
-                _vm.$set(_vm.product, "price", _vm._n($event.target.value))
-              },
-              blur: function($event) {
-                _vm.$forceUpdate()
-              }
-            }
-          })
-        ]),
-        _vm._v(" "),
-        _c("div", { staticClass: "button-create form-group" }, [
-          _c(
-            "button",
-            {
-              staticClass: "btn btn-primary",
-              on: { click: _vm.createProduct }
-            },
-            [_vm._v("Create")]
-          )
-        ])
-      ]),
-      _vm._v(" "),
-      _c("hr"),
-      _vm._v(" "),
-      _c("div", { staticClass: "list-products" }, [
-        _c("h2", [_vm._v("LIST PRODUCT")]),
-        _vm._v(" "),
-        _c("div", { staticClass: "product-table" }, [
-          _c("table", { staticClass: "table table-bordered" }, [
-            _vm._m(0, false, false),
-            _vm._v(" "),
-            _c(
-              "tbody",
-              _vm._l(_vm.list_products, function(prod, index) {
-                return _c("tr", [
-                  _c("td", [_vm._v(_vm._s(prod.id))]),
-                  _vm._v(" "),
-                  !prod.isEdit
-                    ? _c("td", [
-                        _vm._v(
-                          "\n\t\t\t\t\t\t\t" +
-                            _vm._s(prod.name) +
-                            "\n\t\t\t\t\t\t"
-                        )
-                      ])
-                    : _c("td", [
-                        _c("input", {
-                          directives: [
-                            {
-                              name: "model",
-                              rawName: "v-model",
-                              value: prod.name,
-                              expression: "prod.name"
-                            }
-                          ],
-                          staticClass: "form-control",
-                          attrs: { type: "text" },
-                          domProps: { value: prod.name },
-                          on: {
-                            input: function($event) {
-                              if ($event.target.composing) {
-                                return
-                              }
-                              _vm.$set(prod, "name", $event.target.value)
-                            }
-                          }
-                        })
-                      ]),
-                  _vm._v(" "),
-                  !prod.isEdit
-                    ? _c("td", [
-                        _vm._v(
-                          "\n\t\t\t\t\t\t\t" +
-                            _vm._s(prod.price) +
-                            "\n\t\t\t\t\t\t"
-                        )
-                      ])
-                    : _c("td", [
-                        _c("input", {
-                          directives: [
-                            {
-                              name: "model",
-                              rawName: "v-model.number",
-                              value: prod.price,
-                              expression: "prod.price",
-                              modifiers: { number: true }
-                            }
-                          ],
-                          staticClass: "form-control",
-                          attrs: { type: "text" },
-                          domProps: { value: prod.price },
-                          on: {
-                            input: function($event) {
-                              if ($event.target.composing) {
-                                return
-                              }
-                              _vm.$set(
-                                prod,
-                                "price",
-                                _vm._n($event.target.value)
-                              )
-                            },
-                            blur: function($event) {
-                              _vm.$forceUpdate()
-                            }
-                          }
-                        })
-                      ]),
-                  _vm._v(" "),
-                  _c("td", [_vm._v(_vm._s(prod.created_at))]),
-                  _vm._v(" "),
-                  !prod.isEdit
-                    ? _c("td", [
-                        _c(
-                          "button",
-                          {
-                            staticClass: "btn btn-success",
-                            on: {
-                              click: function($event) {
-                                prod.isEdit = true
-                              }
-                            }
-                          },
-                          [_vm._v("Edit")]
-                        ),
-                        _vm._v(" "),
-                        _c(
-                          "button",
-                          {
-                            staticClass: "btn btn-danger",
-                            on: {
-                              click: function($event) {
-                                _vm.deleteProduct(prod, index)
-                              }
-                            }
-                          },
-                          [_vm._v("Delete")]
-                        )
-                      ])
-                    : _c("td", [
-                        _c(
-                          "button",
-                          {
-                            staticClass: "btn btn-primary",
-                            on: {
-                              click: function($event) {
-                                _vm.updateProduct(prod)
-                              }
-                            }
-                          },
-                          [_vm._v("Save")]
-                        ),
-                        _vm._v(" "),
-                        _c(
-                          "button",
-                          {
-                            staticClass: "btn btn-danger",
-                            on: {
-                              click: function($event) {
-                                prod.isEdit = false
-                              }
-                            }
-                          },
-                          [_vm._v("Cancel")]
-                        )
-                      ])
-                ])
-              })
-            )
-          ])
-        ])
-      ])
-    ],
-    1
-  )
-}
-var staticRenderFns = [
-  function() {
-    var _vm = this
-    var _h = _vm.$createElement
-    var _c = _vm._self._c || _h
-    return _c("thead", [
-      _c("tr", [
-        _c("th", [_vm._v("ID")]),
-        _vm._v(" "),
-        _c("th", [_vm._v("Name")]),
-        _vm._v(" "),
-        _c("th", [_vm._v("Price")]),
-        _vm._v(" "),
-        _c("th", [_vm._v("Date created")]),
-        _vm._v(" "),
-        _c("th")
-      ])
-    ])
-  }
-]
-render._withStripped = true
-module.exports = { render: render, staticRenderFns: staticRenderFns }
-if (false) {
-  module.hot.accept()
-  if (module.hot.data) {
-    require("vue-hot-reload-api")      .rerender("data-v-4ce99dc1", module.exports)
-  }
-}
-
-/***/ }),
-/* 241 */
-/***/ (function(module, exports) {
-
-// removed by extract-text-webpack-plugin
-
-/***/ }),
-/* 242 */,
-/* 243 */,
-/* 244 */,
-/* 245 */,
-/* 246 */,
-/* 247 */,
-/* 248 */,
-/* 249 */,
-/* 250 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Utilities
-//
-
-
-
-function _class(obj) { return Object.prototype.toString.call(obj); }
-
-function isString(obj) { return _class(obj) === '[object String]'; }
-
-var _hasOwnProperty = Object.prototype.hasOwnProperty;
-
-function has(object, key) {
-  return _hasOwnProperty.call(object, key);
-}
-
-// Merge objects
-//
-function assign(obj /*from1, from2, from3, ...*/) {
-  var sources = Array.prototype.slice.call(arguments, 1);
-
-  sources.forEach(function (source) {
-    if (!source) { return; }
-
-    if (typeof source !== 'object') {
-      throw new TypeError(source + 'must be object');
-    }
-
-    Object.keys(source).forEach(function (key) {
-      obj[key] = source[key];
-    });
-  });
-
-  return obj;
-}
-
-// Remove element from array and put another array at those position.
-// Useful for some operations with tokens
-function arrayReplaceAt(src, pos, newElements) {
-  return [].concat(src.slice(0, pos), newElements, src.slice(pos + 1));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-function isValidEntityCode(c) {
-  /*eslint no-bitwise:0*/
-  // broken sequence
-  if (c >= 0xD800 && c <= 0xDFFF) { return false; }
-  // never used
-  if (c >= 0xFDD0 && c <= 0xFDEF) { return false; }
-  if ((c & 0xFFFF) === 0xFFFF || (c & 0xFFFF) === 0xFFFE) { return false; }
-  // control codes
-  if (c >= 0x00 && c <= 0x08) { return false; }
-  if (c === 0x0B) { return false; }
-  if (c >= 0x0E && c <= 0x1F) { return false; }
-  if (c >= 0x7F && c <= 0x9F) { return false; }
-  // out of range
-  if (c > 0x10FFFF) { return false; }
-  return true;
-}
-
-function fromCodePoint(c) {
-  /*eslint no-bitwise:0*/
-  if (c > 0xffff) {
-    c -= 0x10000;
-    var surrogate1 = 0xd800 + (c >> 10),
-        surrogate2 = 0xdc00 + (c & 0x3ff);
-
-    return String.fromCharCode(surrogate1, surrogate2);
-  }
-  return String.fromCharCode(c);
-}
-
-
-var UNESCAPE_MD_RE  = /\\([!"#$%&'()*+,\-.\/:;<=>?@[\\\]^_`{|}~])/g;
-var ENTITY_RE       = /&([a-z#][a-z0-9]{1,31});/gi;
-var UNESCAPE_ALL_RE = new RegExp(UNESCAPE_MD_RE.source + '|' + ENTITY_RE.source, 'gi');
-
-var DIGITAL_ENTITY_TEST_RE = /^#((?:x[a-f0-9]{1,8}|[0-9]{1,8}))/i;
-
-var entities = __webpack_require__(289);
-
-function replaceEntityPattern(match, name) {
-  var code = 0;
-
-  if (has(entities, name)) {
-    return entities[name];
-  }
-
-  if (name.charCodeAt(0) === 0x23/* # */ && DIGITAL_ENTITY_TEST_RE.test(name)) {
-    code = name[1].toLowerCase() === 'x' ?
-      parseInt(name.slice(2), 16)
-    :
-      parseInt(name.slice(1), 10);
-    if (isValidEntityCode(code)) {
-      return fromCodePoint(code);
-    }
-  }
-
-  return match;
-}
-
-/*function replaceEntities(str) {
-  if (str.indexOf('&') < 0) { return str; }
-
-  return str.replace(ENTITY_RE, replaceEntityPattern);
-}*/
-
-function unescapeMd(str) {
-  if (str.indexOf('\\') < 0) { return str; }
-  return str.replace(UNESCAPE_MD_RE, '$1');
-}
-
-function unescapeAll(str) {
-  if (str.indexOf('\\') < 0 && str.indexOf('&') < 0) { return str; }
-
-  return str.replace(UNESCAPE_ALL_RE, function (match, escaped, entity) {
-    if (escaped) { return escaped; }
-    return replaceEntityPattern(match, entity);
-  });
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-var HTML_ESCAPE_TEST_RE = /[&<>"]/;
-var HTML_ESCAPE_REPLACE_RE = /[&<>"]/g;
-var HTML_REPLACEMENTS = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;'
-};
-
-function replaceUnsafeChar(ch) {
-  return HTML_REPLACEMENTS[ch];
-}
-
-function escapeHtml(str) {
-  if (HTML_ESCAPE_TEST_RE.test(str)) {
-    return str.replace(HTML_ESCAPE_REPLACE_RE, replaceUnsafeChar);
-  }
-  return str;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-var REGEXP_ESCAPE_RE = /[.?*+^$[\]\\(){}|-]/g;
-
-function escapeRE(str) {
-  return str.replace(REGEXP_ESCAPE_RE, '\\$&');
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-function isSpace(code) {
-  switch (code) {
-    case 0x09:
-    case 0x20:
-      return true;
-  }
-  return false;
-}
-
-// Zs (unicode class) || [\t\f\v\r\n]
-function isWhiteSpace(code) {
-  if (code >= 0x2000 && code <= 0x200A) { return true; }
-  switch (code) {
-    case 0x09: // \t
-    case 0x0A: // \n
-    case 0x0B: // \v
-    case 0x0C: // \f
-    case 0x0D: // \r
-    case 0x20:
-    case 0xA0:
-    case 0x1680:
-    case 0x202F:
-    case 0x205F:
-    case 0x3000:
-      return true;
-  }
-  return false;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-/*eslint-disable max-len*/
-var UNICODE_PUNCT_RE = __webpack_require__(274);
-
-// Currently without astral characters support.
-function isPunctChar(ch) {
-  return UNICODE_PUNCT_RE.test(ch);
-}
-
-
-// Markdown ASCII punctuation characters.
-//
-// !, ", #, $, %, &, ', (, ), *, +, ,, -, ., /, :, ;, <, =, >, ?, @, [, \, ], ^, _, `, {, |, }, or ~
-// http://spec.commonmark.org/0.15/#ascii-punctuation-character
-//
-// Don't confuse with unicode punctuation !!! It lacks some chars in ascii range.
-//
-function isMdAsciiPunct(ch) {
-  switch (ch) {
-    case 0x21/* ! */:
-    case 0x22/* " */:
-    case 0x23/* # */:
-    case 0x24/* $ */:
-    case 0x25/* % */:
-    case 0x26/* & */:
-    case 0x27/* ' */:
-    case 0x28/* ( */:
-    case 0x29/* ) */:
-    case 0x2A/* * */:
-    case 0x2B/* + */:
-    case 0x2C/* , */:
-    case 0x2D/* - */:
-    case 0x2E/* . */:
-    case 0x2F/* / */:
-    case 0x3A/* : */:
-    case 0x3B/* ; */:
-    case 0x3C/* < */:
-    case 0x3D/* = */:
-    case 0x3E/* > */:
-    case 0x3F/* ? */:
-    case 0x40/* @ */:
-    case 0x5B/* [ */:
-    case 0x5C/* \ */:
-    case 0x5D/* ] */:
-    case 0x5E/* ^ */:
-    case 0x5F/* _ */:
-    case 0x60/* ` */:
-    case 0x7B/* { */:
-    case 0x7C/* | */:
-    case 0x7D/* } */:
-    case 0x7E/* ~ */:
-      return true;
-    default:
-      return false;
-  }
-}
-
-// Hepler to unify [reference labels].
-//
-function normalizeReference(str) {
-  // use .toUpperCase() instead of .toLowerCase()
-  // here to avoid a conflict with Object.prototype
-  // members (most notably, `__proto__`)
-  return str.trim().replace(/\s+/g, ' ').toUpperCase();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Re-export libraries commonly used in both markdown-it and its plugins,
-// so plugins won't have to depend on them explicitly, which reduces their
-// bundled size (e.g. a browser build).
-//
-exports.lib                 = {};
-exports.lib.mdurl           = __webpack_require__(290);
-exports.lib.ucmicro         = __webpack_require__(339);
-
-exports.assign              = assign;
-exports.isString            = isString;
-exports.has                 = has;
-exports.unescapeMd          = unescapeMd;
-exports.unescapeAll         = unescapeAll;
-exports.isValidEntityCode   = isValidEntityCode;
-exports.fromCodePoint       = fromCodePoint;
-// exports.replaceEntities     = replaceEntities;
-exports.escapeHtml          = escapeHtml;
-exports.arrayReplaceAt      = arrayReplaceAt;
-exports.isSpace             = isSpace;
-exports.isWhiteSpace        = isWhiteSpace;
-exports.isMdAsciiPunct      = isMdAsciiPunct;
-exports.isPunctChar         = isPunctChar;
-exports.escapeRE            = escapeRE;
-exports.normalizeReference  = normalizeReference;
-
-
-/***/ }),
-/* 251 */
-/***/ (function(module, exports) {
-
-/**
- * This file contains a list of utility functions which are useful in other
- * files.
- */
-
-/**
- * Provide an `indexOf` function which works in IE8, but defers to native if
- * possible.
- */
-var nativeIndexOf = Array.prototype.indexOf;
-var indexOf = function(list, elem) {
-    if (list == null) {
-        return -1;
-    }
-    if (nativeIndexOf && list.indexOf === nativeIndexOf) {
-        return list.indexOf(elem);
-    }
-    var i = 0;
-    var l = list.length;
-    for (; i < l; i++) {
-        if (list[i] === elem) {
-            return i;
-        }
-    }
-    return -1;
-};
-
-/**
- * Return whether an element is contained in a list
- */
-var contains = function(list, elem) {
-    return indexOf(list, elem) !== -1;
-};
-
-/**
- * Provide a default value if a setting is undefined
- */
-var deflt = function(setting, defaultIfUndefined) {
-    return setting === undefined ? defaultIfUndefined : setting;
-};
-
-// hyphenate and escape adapted from Facebook's React under Apache 2 license
-
-var uppercase = /([A-Z])/g;
-var hyphenate = function(str) {
-    return str.replace(uppercase, "-$1").toLowerCase();
-};
-
-var ESCAPE_LOOKUP = {
-    "&": "&amp;",
-    ">": "&gt;",
-    "<": "&lt;",
-    "\"": "&quot;",
-    "'": "&#x27;",
-};
-
-var ESCAPE_REGEX = /[&><"']/g;
-
-function escaper(match) {
-    return ESCAPE_LOOKUP[match];
-}
-
-/**
- * Escapes text to prevent scripting attacks.
- *
- * @param {*} text Text value to escape.
- * @return {string} An escaped string.
- */
-function escape(text) {
-    return ("" + text).replace(ESCAPE_REGEX, escaper);
-}
-
-/**
- * A function to set the text content of a DOM element in all supported
- * browsers. Note that we don't define this if there is no document.
- */
-var setTextContent;
-if (typeof document !== "undefined") {
-    var testNode = document.createElement("span");
-    if ("textContent" in testNode) {
-        setTextContent = function(node, text) {
-            node.textContent = text;
-        };
-    } else {
-        setTextContent = function(node, text) {
-            node.innerText = text;
-        };
-    }
-}
-
-/**
- * A function to clear a node.
- */
-function clearNode(node) {
-    setTextContent(node, "");
-}
-
-module.exports = {
-    contains: contains,
-    deflt: deflt,
-    escape: escape,
-    hyphenate: hyphenate,
-    indexOf: indexOf,
-    setTextContent: setTextContent,
-    clearNode: clearNode,
-};
-
-
-/***/ }),
-/* 252 */
-/***/ (function(module, exports) {
-
-/**
- * This is the ParseError class, which is the main error thrown by KaTeX
- * functions when something has gone wrong. This is used to distinguish internal
- * errors from errors in the expression that the user provided.
- */
-function ParseError(message, lexer, position) {
-    var error = "KaTeX parse error: " + message;
-
-    if (lexer !== undefined && position !== undefined) {
-        // If we have the input and a position, make the error a bit fancier
-
-        // Prepend some information
-        error += " at position " + position + ": ";
-
-        // Get the input
-        var input = lexer._input;
-        // Insert a combining underscore at the correct position
-        input = input.slice(0, position) + "\u0332" +
-            input.slice(position);
-
-        // Extract some context from the input and add it to the error
-        var begin = Math.max(0, position - 15);
-        var end = position + 15;
-        error += input.slice(begin, end);
-    }
-
-    // Some hackery to make ParseError a prototype of Error
-    // See http://stackoverflow.com/a/8460753
-    var self = new Error(error);
-    self.name = "ParseError";
-    self.__proto__ = ParseError.prototype;
-
-    self.position = position;
-    return self;
-}
-
-// More hackery
-ParseError.prototype.__proto__ = Error.prototype;
-
-module.exports = ParseError;
-
-
-/***/ }),
-/* 253 */
-/***/ (function(module, exports) {
-
-// https://github.com/zloirock/core-js/issues/86#issuecomment-115759028
-var global = module.exports = typeof window != 'undefined' && window.Math == Math
-  ? window : typeof self != 'undefined' && self.Math == Math ? self
-  // eslint-disable-next-line no-new-func
-  : Function('return this')();
-if (typeof __g == 'number') __g = global; // eslint-disable-line no-undef
-
-
-/***/ }),
-/* 254 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var store = __webpack_require__(284)('wks');
-var uid = __webpack_require__(285);
-var Symbol = __webpack_require__(253).Symbol;
-var USE_SYMBOL = typeof Symbol == 'function';
-
-var $exports = module.exports = function (name) {
-  return store[name] || (store[name] =
-    USE_SYMBOL && Symbol[name] || (USE_SYMBOL ? Symbol : uid)('Symbol.' + name));
-};
-
-$exports.store = store;
-
-
-/***/ }),
-/* 255 */
-/***/ (function(module, exports) {
-
-var core = module.exports = { version: '2.5.1' };
-if (typeof __e == 'number') __e = core; // eslint-disable-line no-undef
-
-
-/***/ }),
-/* 256 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var dP = __webpack_require__(269);
-var createDesc = __webpack_require__(282);
-module.exports = __webpack_require__(260) ? function (object, key, value) {
-  return dP.f(object, key, createDesc(1, value));
-} : function (object, key, value) {
-  object[key] = value;
-  return object;
-};
-
-
-/***/ }),
-/* 257 */
-/***/ (function(module, exports, __webpack_require__) {
-
-/* eslint no-unused-vars:0 */
-
-var Style = __webpack_require__(264);
-
-/**
- * This file contains metrics regarding fonts and individual symbols. The sigma
- * and xi variables, as well as the metricMap map contain data extracted from
- * TeX, TeX font metrics, and the TTF files. These data are then exposed via the
- * `metrics` variable and the getCharacterMetrics function.
- */
-
-// These font metrics are extracted from TeX by using
-// \font\a=cmmi10
-// \showthe\fontdimenX\a
-// where X is the corresponding variable number. These correspond to the font
-// parameters of the symbol fonts. In TeX, there are actually three sets of
-// dimensions, one for each of textstyle, scriptstyle, and scriptscriptstyle,
-// but we only use the textstyle ones, and scale certain dimensions accordingly.
-// See the TeXbook, page 441.
-var sigma1 = 0.025;
-var sigma2 = 0;
-var sigma3 = 0;
-var sigma4 = 0;
-var sigma5 = 0.431;
-var sigma6 = 1;
-var sigma7 = 0;
-var sigma8 = 0.677;
-var sigma9 = 0.394;
-var sigma10 = 0.444;
-var sigma11 = 0.686;
-var sigma12 = 0.345;
-var sigma13 = 0.413;
-var sigma14 = 0.363;
-var sigma15 = 0.289;
-var sigma16 = 0.150;
-var sigma17 = 0.247;
-var sigma18 = 0.386;
-var sigma19 = 0.050;
-var sigma20 = 2.390;
-var sigma21 = 1.01;
-var sigma21Script = 0.81;
-var sigma21ScriptScript = 0.71;
-var sigma22 = 0.250;
-
-// These font metrics are extracted from TeX by using
-// \font\a=cmex10
-// \showthe\fontdimenX\a
-// where X is the corresponding variable number. These correspond to the font
-// parameters of the extension fonts (family 3). See the TeXbook, page 441.
-var xi1 = 0;
-var xi2 = 0;
-var xi3 = 0;
-var xi4 = 0;
-var xi5 = 0.431;
-var xi6 = 1;
-var xi7 = 0;
-var xi8 = 0.04;
-var xi9 = 0.111;
-var xi10 = 0.166;
-var xi11 = 0.2;
-var xi12 = 0.6;
-var xi13 = 0.1;
-
-// This value determines how large a pt is, for metrics which are defined in
-// terms of pts.
-// This value is also used in katex.less; if you change it make sure the values
-// match.
-var ptPerEm = 10.0;
-
-// The space between adjacent `|` columns in an array definition. From
-// `\showthe\doublerulesep` in LaTeX.
-var doubleRuleSep = 2.0 / ptPerEm;
-
-/**
- * This is just a mapping from common names to real metrics
- */
-var metrics = {
-    xHeight: sigma5,
-    quad: sigma6,
-    num1: sigma8,
-    num2: sigma9,
-    num3: sigma10,
-    denom1: sigma11,
-    denom2: sigma12,
-    sup1: sigma13,
-    sup2: sigma14,
-    sup3: sigma15,
-    sub1: sigma16,
-    sub2: sigma17,
-    supDrop: sigma18,
-    subDrop: sigma19,
-    axisHeight: sigma22,
-    defaultRuleThickness: xi8,
-    bigOpSpacing1: xi9,
-    bigOpSpacing2: xi10,
-    bigOpSpacing3: xi11,
-    bigOpSpacing4: xi12,
-    bigOpSpacing5: xi13,
-    ptPerEm: ptPerEm,
-    emPerEx: sigma5 / sigma6,
-    doubleRuleSep: doubleRuleSep,
-
-    // TODO(alpert): Missing parallel structure here. We should probably add
-    // style-specific metrics for all of these.
-    delim1: sigma20,
-    getDelim2: function(style) {
-        if (style.size === Style.TEXT.size) {
-            return sigma21;
-        } else if (style.size === Style.SCRIPT.size) {
-            return sigma21Script;
-        } else if (style.size === Style.SCRIPTSCRIPT.size) {
-            return sigma21ScriptScript;
-        }
-        throw new Error("Unexpected style size: " + style.size);
-    },
-};
-
-// This map contains a mapping from font name and character code to character
-// metrics, including height, depth, italic correction, and skew (kern from the
-// character to the corresponding \skewchar)
-// This map is generated via `make metrics`. It should not be changed manually.
-var metricMap = __webpack_require__(414);
-
-/**
- * This function is a convenience function for looking up information in the
- * metricMap table. It takes a character as a string, and a style.
- *
- * Note: the `width` property may be undefined if fontMetricsData.js wasn't
- * built using `Make extended_metrics`.
- */
-var getCharacterMetrics = function(character, style) {
-    var metrics = metricMap[style][character.charCodeAt(0)];
-    if (metrics) {
-        return {
-            depth: metrics[0],
-            height: metrics[1],
-            italic: metrics[2],
-            skew: metrics[3],
-            width: metrics[4],
-        };
-    }
-};
-
-module.exports = {
-    metrics: metrics,
-    getCharacterMetrics: getCharacterMetrics,
-};
-
-
-/***/ }),
-/* 258 */
-/***/ (function(module, exports) {
-
-module.exports = {};
-
-
-/***/ }),
-/* 259 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var isObject = __webpack_require__(270);
-module.exports = function (it) {
-  if (!isObject(it)) throw TypeError(it + ' is not an object!');
-  return it;
-};
-
-
-/***/ }),
-/* 260 */
-/***/ (function(module, exports, __webpack_require__) {
-
-// Thank's IE8 for his funny defineProperty
-module.exports = !__webpack_require__(271)(function () {
-  return Object.defineProperty({}, 'a', { get: function () { return 7; } }).a != 7;
-});
-
-
-/***/ }),
-/* 261 */
-/***/ (function(module, exports) {
-
-var hasOwnProperty = {}.hasOwnProperty;
-module.exports = function (it, key) {
-  return hasOwnProperty.call(it, key);
-};
-
-
-/***/ }),
-/* 262 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Parse link destination
-//
-
-
-
-var isSpace     = __webpack_require__(250).isSpace;
-var unescapeAll = __webpack_require__(250).unescapeAll;
-
-
-module.exports = function parseLinkDestination(str, pos, max) {
-  var code, level,
-      lines = 0,
-      start = pos,
-      result = {
-        ok: false,
-        pos: 0,
-        lines: 0,
-        str: ''
-      };
-
-  if (str.charCodeAt(pos) === 0x3C /* < */) {
-    pos++;
-    while (pos < max) {
-      code = str.charCodeAt(pos);
-      if (code === 0x0A /* \n */ || isSpace(code)) { return result; }
-      if (code === 0x3E /* > */) {
-        result.pos = pos + 1;
-        result.str = unescapeAll(str.slice(start + 1, pos));
-        result.ok = true;
-        return result;
-      }
-      if (code === 0x5C /* \ */ && pos + 1 < max) {
-        pos += 2;
-        continue;
-      }
-
-      pos++;
-    }
-
-    // no closing '>'
-    return result;
-  }
-
-  // this should be ... } else { ... branch
-
-  level = 0;
-  while (pos < max) {
-    code = str.charCodeAt(pos);
-
-    if (code === 0x20) { break; }
-
-    // ascii control characters
-    if (code < 0x20 || code === 0x7F) { break; }
-
-    if (code === 0x5C /* \ */ && pos + 1 < max) {
-      pos += 2;
-      continue;
-    }
-
-    if (code === 0x28 /* ( */) {
-      level++;
-      if (level > 1) { break; }
-    }
-
-    if (code === 0x29 /* ) */) {
-      level--;
-      if (level < 0) { break; }
-    }
-
-    pos++;
-  }
-
-  if (start === pos) { return result; }
-
-  result.str = unescapeAll(str.slice(start, pos));
-  result.lines = lines;
-  result.pos = pos;
-  result.ok = true;
-  return result;
-};
-
-
-/***/ }),
-/* 263 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Parse link title
-//
-
-
-
-var unescapeAll = __webpack_require__(250).unescapeAll;
-
-
-module.exports = function parseLinkTitle(str, pos, max) {
-  var code,
-      marker,
-      lines = 0,
-      start = pos,
-      result = {
-        ok: false,
-        pos: 0,
-        lines: 0,
-        str: ''
-      };
-
-  if (pos >= max) { return result; }
-
-  marker = str.charCodeAt(pos);
-
-  if (marker !== 0x22 /* " */ && marker !== 0x27 /* ' */ && marker !== 0x28 /* ( */) { return result; }
-
-  pos++;
-
-  // if opening marker is "(", switch it to closing marker ")"
-  if (marker === 0x28) { marker = 0x29; }
-
-  while (pos < max) {
-    code = str.charCodeAt(pos);
-    if (code === marker) {
-      result.pos = pos + 1;
-      result.lines = lines;
-      result.str = unescapeAll(str.slice(start + 1, pos));
-      result.ok = true;
-      return result;
-    } else if (code === 0x0A) {
-      lines++;
-    } else if (code === 0x5C /* \ */ && pos + 1 < max) {
-      pos++;
-      if (str.charCodeAt(pos) === 0x0A) {
-        lines++;
-      }
-    }
-
-    pos++;
-  }
-
-  return result;
-};
-
-
-/***/ }),
-/* 264 */
-/***/ (function(module, exports) {
-
-/**
- * This file contains information and classes for the various kinds of styles
- * used in TeX. It provides a generic `Style` class, which holds information
- * about a specific style. It then provides instances of all the different kinds
- * of styles possible, and provides functions to move between them and get
- * information about them.
- */
-
-/**
- * The main style class. Contains a unique id for the style, a size (which is
- * the same for cramped and uncramped version of a style), a cramped flag, and a
- * size multiplier, which gives the size difference between a style and
- * textstyle.
- */
-function Style(id, size, multiplier, cramped) {
-    this.id = id;
-    this.size = size;
-    this.cramped = cramped;
-    this.sizeMultiplier = multiplier;
-}
-
-/**
- * Get the style of a superscript given a base in the current style.
- */
-Style.prototype.sup = function() {
-    return styles[sup[this.id]];
-};
-
-/**
- * Get the style of a subscript given a base in the current style.
- */
-Style.prototype.sub = function() {
-    return styles[sub[this.id]];
-};
-
-/**
- * Get the style of a fraction numerator given the fraction in the current
- * style.
- */
-Style.prototype.fracNum = function() {
-    return styles[fracNum[this.id]];
-};
-
-/**
- * Get the style of a fraction denominator given the fraction in the current
- * style.
- */
-Style.prototype.fracDen = function() {
-    return styles[fracDen[this.id]];
-};
-
-/**
- * Get the cramped version of a style (in particular, cramping a cramped style
- * doesn't change the style).
- */
-Style.prototype.cramp = function() {
-    return styles[cramp[this.id]];
-};
-
-/**
- * HTML class name, like "displaystyle cramped"
- */
-Style.prototype.cls = function() {
-    return sizeNames[this.size] + (this.cramped ? " cramped" : " uncramped");
-};
-
-/**
- * HTML Reset class name, like "reset-textstyle"
- */
-Style.prototype.reset = function() {
-    return resetNames[this.size];
-};
-
-// IDs of the different styles
-var D = 0;
-var Dc = 1;
-var T = 2;
-var Tc = 3;
-var S = 4;
-var Sc = 5;
-var SS = 6;
-var SSc = 7;
-
-// String names for the different sizes
-var sizeNames = [
-    "displaystyle textstyle",
-    "textstyle",
-    "scriptstyle",
-    "scriptscriptstyle",
-];
-
-// Reset names for the different sizes
-var resetNames = [
-    "reset-textstyle",
-    "reset-textstyle",
-    "reset-scriptstyle",
-    "reset-scriptscriptstyle",
-];
-
-// Instances of the different styles
-var styles = [
-    new Style(D, 0, 1.0, false),
-    new Style(Dc, 0, 1.0, true),
-    new Style(T, 1, 1.0, false),
-    new Style(Tc, 1, 1.0, true),
-    new Style(S, 2, 0.7, false),
-    new Style(Sc, 2, 0.7, true),
-    new Style(SS, 3, 0.5, false),
-    new Style(SSc, 3, 0.5, true),
-];
-
-// Lookup tables for switching from one style to another
-var sup = [S, Sc, S, Sc, SS, SSc, SS, SSc];
-var sub = [Sc, Sc, Sc, Sc, SSc, SSc, SSc, SSc];
-var fracNum = [T, Tc, S, Sc, SS, SSc, SS, SSc];
-var fracDen = [Tc, Tc, Sc, Sc, SSc, SSc, SSc, SSc];
-var cramp = [Dc, Dc, Tc, Tc, Sc, Sc, SSc, SSc];
-
-// We only export some of the styles. Also, we don't export the `Style` class so
-// no more styles can be generated.
-module.exports = {
-    DISPLAY: styles[D],
-    TEXT: styles[T],
-    SCRIPT: styles[S],
-    SCRIPTSCRIPT: styles[SS],
-};
-
-
-/***/ }),
-/* 265 */
-/***/ (function(module, exports, __webpack_require__) {
-
-/* eslint no-console:0 */
-/**
- * This module contains general functions that can be used for building
- * different kinds of domTree nodes in a consistent manner.
- */
-
-var domTree = __webpack_require__(298);
-var fontMetrics = __webpack_require__(257);
-var symbols = __webpack_require__(266);
-var utils = __webpack_require__(251);
-
-var greekCapitals = [
-    "\\Gamma",
-    "\\Delta",
-    "\\Theta",
-    "\\Lambda",
-    "\\Xi",
-    "\\Pi",
-    "\\Sigma",
-    "\\Upsilon",
-    "\\Phi",
-    "\\Psi",
-    "\\Omega",
-];
-
-var dotlessLetters = [
-    "\u0131",   // dotless i, \imath
-    "\u0237",   // dotless j, \jmath
-];
-
-/**
- * Makes a symbolNode after translation via the list of symbols in symbols.js.
- * Correctly pulls out metrics for the character, and optionally takes a list of
- * classes to be attached to the node.
- */
-var makeSymbol = function(value, style, mode, color, classes) {
-    // Replace the value with its replaced value from symbol.js
-    if (symbols[mode][value] && symbols[mode][value].replace) {
-        value = symbols[mode][value].replace;
-    }
-
-    var metrics = fontMetrics.getCharacterMetrics(value, style);
-
-    var symbolNode;
-    if (metrics) {
-        symbolNode = new domTree.symbolNode(
-            value, metrics.height, metrics.depth, metrics.italic, metrics.skew,
-            classes);
-    } else {
-        // TODO(emily): Figure out a good way to only print this in development
-        typeof console !== "undefined" && console.warn(
-            "No character metrics for '" + value + "' in style '" +
-                style + "'");
-        symbolNode = new domTree.symbolNode(value, 0, 0, 0, 0, classes);
-    }
-
-    if (color) {
-        symbolNode.style.color = color;
-    }
-
-    return symbolNode;
-};
-
-/**
- * Makes a symbol in Main-Regular or AMS-Regular.
- * Used for rel, bin, open, close, inner, and punct.
- */
-var mathsym = function(value, mode, color, classes) {
-    // Decide what font to render the symbol in by its entry in the symbols
-    // table.
-    // Have a special case for when the value = \ because the \ is used as a
-    // textord in unsupported command errors but cannot be parsed as a regular
-    // text ordinal and is therefore not present as a symbol in the symbols
-    // table for text
-    if (value === "\\" || symbols[mode][value].font === "main") {
-        return makeSymbol(value, "Main-Regular", mode, color, classes);
-    } else {
-        return makeSymbol(
-            value, "AMS-Regular", mode, color, classes.concat(["amsrm"]));
-    }
-};
-
-/**
- * Makes a symbol in the default font for mathords and textords.
- */
-var mathDefault = function(value, mode, color, classes, type) {
-    if (type === "mathord") {
-        return mathit(value, mode, color, classes);
-    } else if (type === "textord") {
-        return makeSymbol(
-            value, "Main-Regular", mode, color, classes.concat(["mathrm"]));
-    } else {
-        throw new Error("unexpected type: " + type + " in mathDefault");
-    }
-};
-
-/**
- * Makes a symbol in the italic math font.
- */
-var mathit = function(value, mode, color, classes) {
-    if (/[0-9]/.test(value.charAt(0)) ||
-            // glyphs for \imath and \jmath do not exist in Math-Italic so we
-            // need to use Main-Italic instead
-            utils.contains(dotlessLetters, value) ||
-            utils.contains(greekCapitals, value)) {
-        return makeSymbol(
-            value, "Main-Italic", mode, color, classes.concat(["mainit"]));
-    } else {
-        return makeSymbol(
-            value, "Math-Italic", mode, color, classes.concat(["mathit"]));
-    }
-};
-
-/**
- * Makes either a mathord or textord in the correct font and color.
- */
-var makeOrd = function(group, options, type) {
-    var mode = group.mode;
-    var value = group.value;
-    if (symbols[mode][value] && symbols[mode][value].replace) {
-        value = symbols[mode][value].replace;
-    }
-
-    var classes = ["mord"];
-    var color = options.getColor();
-
-    var font = options.font;
-    if (font) {
-        if (font === "mathit" || utils.contains(dotlessLetters, value)) {
-            return mathit(value, mode, color, classes);
-        } else {
-            var fontName = fontMap[font].fontName;
-            if (fontMetrics.getCharacterMetrics(value, fontName)) {
-                return makeSymbol(
-                    value, fontName, mode, color, classes.concat([font]));
-            } else {
-                return mathDefault(value, mode, color, classes, type);
-            }
-        }
-    } else {
-        return mathDefault(value, mode, color, classes, type);
-    }
-};
-
-/**
- * Calculate the height, depth, and maxFontSize of an element based on its
- * children.
- */
-var sizeElementFromChildren = function(elem) {
-    var height = 0;
-    var depth = 0;
-    var maxFontSize = 0;
-
-    if (elem.children) {
-        for (var i = 0; i < elem.children.length; i++) {
-            if (elem.children[i].height > height) {
-                height = elem.children[i].height;
-            }
-            if (elem.children[i].depth > depth) {
-                depth = elem.children[i].depth;
-            }
-            if (elem.children[i].maxFontSize > maxFontSize) {
-                maxFontSize = elem.children[i].maxFontSize;
-            }
-        }
-    }
-
-    elem.height = height;
-    elem.depth = depth;
-    elem.maxFontSize = maxFontSize;
-};
-
-/**
- * Makes a span with the given list of classes, list of children, and color.
- */
-var makeSpan = function(classes, children, color) {
-    var span = new domTree.span(classes, children);
-
-    sizeElementFromChildren(span);
-
-    if (color) {
-        span.style.color = color;
-    }
-
-    return span;
-};
-
-/**
- * Makes a document fragment with the given list of children.
- */
-var makeFragment = function(children) {
-    var fragment = new domTree.documentFragment(children);
-
-    sizeElementFromChildren(fragment);
-
-    return fragment;
-};
-
-/**
- * Makes an element placed in each of the vlist elements to ensure that each
- * element has the same max font size. To do this, we create a zero-width space
- * with the correct font size.
- */
-var makeFontSizer = function(options, fontSize) {
-    var fontSizeInner = makeSpan([], [new domTree.symbolNode("\u200b")]);
-    fontSizeInner.style.fontSize =
-        (fontSize / options.style.sizeMultiplier) + "em";
-
-    var fontSizer = makeSpan(
-        ["fontsize-ensurer", "reset-" + options.size, "size5"],
-        [fontSizeInner]);
-
-    return fontSizer;
-};
-
-/**
- * Makes a vertical list by stacking elements and kerns on top of each other.
- * Allows for many different ways of specifying the positioning method.
- *
- * Arguments:
- *  - children: A list of child or kern nodes to be stacked on top of each other
- *              (i.e. the first element will be at the bottom, and the last at
- *              the top). Element nodes are specified as
- *                {type: "elem", elem: node}
- *              while kern nodes are specified as
- *                {type: "kern", size: size}
- *  - positionType: The method by which the vlist should be positioned. Valid
- *                  values are:
- *                   - "individualShift": The children list only contains elem
- *                                        nodes, and each node contains an extra
- *                                        "shift" value of how much it should be
- *                                        shifted (note that shifting is always
- *                                        moving downwards). positionData is
- *                                        ignored.
- *                   - "top": The positionData specifies the topmost point of
- *                            the vlist (note this is expected to be a height,
- *                            so positive values move up)
- *                   - "bottom": The positionData specifies the bottommost point
- *                               of the vlist (note this is expected to be a
- *                               depth, so positive values move down
- *                   - "shift": The vlist will be positioned such that its
- *                              baseline is positionData away from the baseline
- *                              of the first child. Positive values move
- *                              downwards.
- *                   - "firstBaseline": The vlist will be positioned such that
- *                                      its baseline is aligned with the
- *                                      baseline of the first child.
- *                                      positionData is ignored. (this is
- *                                      equivalent to "shift" with
- *                                      positionData=0)
- *  - positionData: Data used in different ways depending on positionType
- *  - options: An Options object
- *
- */
-var makeVList = function(children, positionType, positionData, options) {
-    var depth;
-    var currPos;
-    var i;
-    if (positionType === "individualShift") {
-        var oldChildren = children;
-        children = [oldChildren[0]];
-
-        // Add in kerns to the list of children to get each element to be
-        // shifted to the correct specified shift
-        depth = -oldChildren[0].shift - oldChildren[0].elem.depth;
-        currPos = depth;
-        for (i = 1; i < oldChildren.length; i++) {
-            var diff = -oldChildren[i].shift - currPos -
-                oldChildren[i].elem.depth;
-            var size = diff -
-                (oldChildren[i - 1].elem.height +
-                 oldChildren[i - 1].elem.depth);
-
-            currPos = currPos + diff;
-
-            children.push({type: "kern", size: size});
-            children.push(oldChildren[i]);
-        }
-    } else if (positionType === "top") {
-        // We always start at the bottom, so calculate the bottom by adding up
-        // all the sizes
-        var bottom = positionData;
-        for (i = 0; i < children.length; i++) {
-            if (children[i].type === "kern") {
-                bottom -= children[i].size;
-            } else {
-                bottom -= children[i].elem.height + children[i].elem.depth;
-            }
-        }
-        depth = bottom;
-    } else if (positionType === "bottom") {
-        depth = -positionData;
-    } else if (positionType === "shift") {
-        depth = -children[0].elem.depth - positionData;
-    } else if (positionType === "firstBaseline") {
-        depth = -children[0].elem.depth;
-    } else {
-        depth = 0;
-    }
-
-    // Make the fontSizer
-    var maxFontSize = 0;
-    for (i = 0; i < children.length; i++) {
-        if (children[i].type === "elem") {
-            maxFontSize = Math.max(maxFontSize, children[i].elem.maxFontSize);
-        }
-    }
-    var fontSizer = makeFontSizer(options, maxFontSize);
-
-    // Create a new list of actual children at the correct offsets
-    var realChildren = [];
-    currPos = depth;
-    for (i = 0; i < children.length; i++) {
-        if (children[i].type === "kern") {
-            currPos += children[i].size;
-        } else {
-            var child = children[i].elem;
-
-            var shift = -child.depth - currPos;
-            currPos += child.height + child.depth;
-
-            var childWrap = makeSpan([], [fontSizer, child]);
-            childWrap.height -= shift;
-            childWrap.depth += shift;
-            childWrap.style.top = shift + "em";
-
-            realChildren.push(childWrap);
-        }
-    }
-
-    // Add in an element at the end with no offset to fix the calculation of
-    // baselines in some browsers (namely IE, sometimes safari)
-    var baselineFix = makeSpan(
-        ["baseline-fix"], [fontSizer, new domTree.symbolNode("\u200b")]);
-    realChildren.push(baselineFix);
-
-    var vlist = makeSpan(["vlist"], realChildren);
-    // Fix the final height and depth, in case there were kerns at the ends
-    // since the makeSpan calculation won't take that in to account.
-    vlist.height = Math.max(currPos, vlist.height);
-    vlist.depth = Math.max(-depth, vlist.depth);
-    return vlist;
-};
-
-// A table of size -> font size for the different sizing functions
-var sizingMultiplier = {
-    size1: 0.5,
-    size2: 0.7,
-    size3: 0.8,
-    size4: 0.9,
-    size5: 1.0,
-    size6: 1.2,
-    size7: 1.44,
-    size8: 1.73,
-    size9: 2.07,
-    size10: 2.49,
-};
-
-// A map of spacing functions to their attributes, like size and corresponding
-// CSS class
-var spacingFunctions = {
-    "\\qquad": {
-        size: "2em",
-        className: "qquad",
-    },
-    "\\quad": {
-        size: "1em",
-        className: "quad",
-    },
-    "\\enspace": {
-        size: "0.5em",
-        className: "enspace",
-    },
-    "\\;": {
-        size: "0.277778em",
-        className: "thickspace",
-    },
-    "\\:": {
-        size: "0.22222em",
-        className: "mediumspace",
-    },
-    "\\,": {
-        size: "0.16667em",
-        className: "thinspace",
-    },
-    "\\!": {
-        size: "-0.16667em",
-        className: "negativethinspace",
-    },
-};
-
-/**
- * Maps TeX font commands to objects containing:
- * - variant: string used for "mathvariant" attribute in buildMathML.js
- * - fontName: the "style" parameter to fontMetrics.getCharacterMetrics
- */
-// A map between tex font commands an MathML mathvariant attribute values
-var fontMap = {
-    // styles
-    "mathbf": {
-        variant: "bold",
-        fontName: "Main-Bold",
-    },
-    "mathrm": {
-        variant: "normal",
-        fontName: "Main-Regular",
-    },
-
-    // "mathit" is missing because it requires the use of two fonts: Main-Italic
-    // and Math-Italic.  This is handled by a special case in makeOrd which ends
-    // up calling mathit.
-
-    // families
-    "mathbb": {
-        variant: "double-struck",
-        fontName: "AMS-Regular",
-    },
-    "mathcal": {
-        variant: "script",
-        fontName: "Caligraphic-Regular",
-    },
-    "mathfrak": {
-        variant: "fraktur",
-        fontName: "Fraktur-Regular",
-    },
-    "mathscr": {
-        variant: "script",
-        fontName: "Script-Regular",
-    },
-    "mathsf": {
-        variant: "sans-serif",
-        fontName: "SansSerif-Regular",
-    },
-    "mathtt": {
-        variant: "monospace",
-        fontName: "Typewriter-Regular",
-    },
-};
-
-module.exports = {
-    fontMap: fontMap,
-    makeSymbol: makeSymbol,
-    mathsym: mathsym,
-    makeSpan: makeSpan,
-    makeFragment: makeFragment,
-    makeVList: makeVList,
-    makeOrd: makeOrd,
-    sizingMultiplier: sizingMultiplier,
-    spacingFunctions: spacingFunctions,
-};
-
-
-/***/ }),
-/* 266 */
-/***/ (function(module, exports) {
-
-/**
- * This file holds a list of all no-argument functions and single-character
- * symbols (like 'a' or ';').
- *
- * For each of the symbols, there are three properties they can have:
- * - font (required): the font to be used for this symbol. Either "main" (the
-     normal font), or "ams" (the ams fonts).
- * - group (required): the ParseNode group type the symbol should have (i.e.
-     "textord", "mathord", etc).
-     See https://github.com/Khan/KaTeX/wiki/Examining-TeX#group-types
- * - replace: the character that this symbol or function should be
- *   replaced with (i.e. "\phi" has a replace value of "\u03d5", the phi
- *   character in the main font).
- *
- * The outermost map in the table indicates what mode the symbols should be
- * accepted in (e.g. "math" or "text").
- */
-
-module.exports = {
-    math: {},
-    text: {},
-};
-
-function defineSymbol(mode, font, group, replace, name) {
-    module.exports[mode][name] = {
-        font: font,
-        group: group,
-        replace: replace,
-    };
-}
-
-// Some abbreviations for commonly used strings.
-// This helps minify the code, and also spotting typos using jshint.
-
-// modes:
-var math = "math";
-var text = "text";
-
-// fonts:
-var main = "main";
-var ams = "ams";
-
-// groups:
-var accent = "accent";
-var bin = "bin";
-var close = "close";
-var inner = "inner";
-var mathord = "mathord";
-var op = "op";
-var open = "open";
-var punct = "punct";
-var rel = "rel";
-var spacing = "spacing";
-var textord = "textord";
-
-// Now comes the symbol table
-
-// Relation Symbols
-defineSymbol(math, main, rel, "\u2261", "\\equiv");
-defineSymbol(math, main, rel, "\u227a", "\\prec");
-defineSymbol(math, main, rel, "\u227b", "\\succ");
-defineSymbol(math, main, rel, "\u223c", "\\sim");
-defineSymbol(math, main, rel, "\u22a5", "\\perp");
-defineSymbol(math, main, rel, "\u2aaf", "\\preceq");
-defineSymbol(math, main, rel, "\u2ab0", "\\succeq");
-defineSymbol(math, main, rel, "\u2243", "\\simeq");
-defineSymbol(math, main, rel, "\u2223", "\\mid");
-defineSymbol(math, main, rel, "\u226a", "\\ll");
-defineSymbol(math, main, rel, "\u226b", "\\gg");
-defineSymbol(math, main, rel, "\u224d", "\\asymp");
-defineSymbol(math, main, rel, "\u2225", "\\parallel");
-defineSymbol(math, main, rel, "\u22c8", "\\bowtie");
-defineSymbol(math, main, rel, "\u2323", "\\smile");
-defineSymbol(math, main, rel, "\u2291", "\\sqsubseteq");
-defineSymbol(math, main, rel, "\u2292", "\\sqsupseteq");
-defineSymbol(math, main, rel, "\u2250", "\\doteq");
-defineSymbol(math, main, rel, "\u2322", "\\frown");
-defineSymbol(math, main, rel, "\u220b", "\\ni");
-defineSymbol(math, main, rel, "\u221d", "\\propto");
-defineSymbol(math, main, rel, "\u22a2", "\\vdash");
-defineSymbol(math, main, rel, "\u22a3", "\\dashv");
-defineSymbol(math, main, rel, "\u220b", "\\owns");
-
-// Punctuation
-defineSymbol(math, main, punct, "\u002e", "\\ldotp");
-defineSymbol(math, main, punct, "\u22c5", "\\cdotp");
-
-// Misc Symbols
-defineSymbol(math, main, textord, "\u0023", "\\#");
-defineSymbol(math, main, textord, "\u0026", "\\&");
-defineSymbol(math, main, textord, "\u2135", "\\aleph");
-defineSymbol(math, main, textord, "\u2200", "\\forall");
-defineSymbol(math, main, textord, "\u210f", "\\hbar");
-defineSymbol(math, main, textord, "\u2203", "\\exists");
-defineSymbol(math, main, textord, "\u2207", "\\nabla");
-defineSymbol(math, main, textord, "\u266d", "\\flat");
-defineSymbol(math, main, textord, "\u2113", "\\ell");
-defineSymbol(math, main, textord, "\u266e", "\\natural");
-defineSymbol(math, main, textord, "\u2663", "\\clubsuit");
-defineSymbol(math, main, textord, "\u2118", "\\wp");
-defineSymbol(math, main, textord, "\u266f", "\\sharp");
-defineSymbol(math, main, textord, "\u2662", "\\diamondsuit");
-defineSymbol(math, main, textord, "\u211c", "\\Re");
-defineSymbol(math, main, textord, "\u2661", "\\heartsuit");
-defineSymbol(math, main, textord, "\u2111", "\\Im");
-defineSymbol(math, main, textord, "\u2660", "\\spadesuit");
-
-// Math and Text
-defineSymbol(math, main, textord, "\u2020", "\\dag");
-defineSymbol(math, main, textord, "\u2021", "\\ddag");
-
-// Large Delimiters
-defineSymbol(math, main, close, "\u23b1", "\\rmoustache");
-defineSymbol(math, main, open, "\u23b0", "\\lmoustache");
-defineSymbol(math, main, close, "\u27ef", "\\rgroup");
-defineSymbol(math, main, open, "\u27ee", "\\lgroup");
-
-// Binary Operators
-defineSymbol(math, main, bin, "\u2213", "\\mp");
-defineSymbol(math, main, bin, "\u2296", "\\ominus");
-defineSymbol(math, main, bin, "\u228e", "\\uplus");
-defineSymbol(math, main, bin, "\u2293", "\\sqcap");
-defineSymbol(math, main, bin, "\u2217", "\\ast");
-defineSymbol(math, main, bin, "\u2294", "\\sqcup");
-defineSymbol(math, main, bin, "\u25ef", "\\bigcirc");
-defineSymbol(math, main, bin, "\u2219", "\\bullet");
-defineSymbol(math, main, bin, "\u2021", "\\ddagger");
-defineSymbol(math, main, bin, "\u2240", "\\wr");
-defineSymbol(math, main, bin, "\u2a3f", "\\amalg");
-
-// Arrow Symbols
-defineSymbol(math, main, rel, "\u27f5", "\\longleftarrow");
-defineSymbol(math, main, rel, "\u21d0", "\\Leftarrow");
-defineSymbol(math, main, rel, "\u27f8", "\\Longleftarrow");
-defineSymbol(math, main, rel, "\u27f6", "\\longrightarrow");
-defineSymbol(math, main, rel, "\u21d2", "\\Rightarrow");
-defineSymbol(math, main, rel, "\u27f9", "\\Longrightarrow");
-defineSymbol(math, main, rel, "\u2194", "\\leftrightarrow");
-defineSymbol(math, main, rel, "\u27f7", "\\longleftrightarrow");
-defineSymbol(math, main, rel, "\u21d4", "\\Leftrightarrow");
-defineSymbol(math, main, rel, "\u27fa", "\\Longleftrightarrow");
-defineSymbol(math, main, rel, "\u21a6", "\\mapsto");
-defineSymbol(math, main, rel, "\u27fc", "\\longmapsto");
-defineSymbol(math, main, rel, "\u2197", "\\nearrow");
-defineSymbol(math, main, rel, "\u21a9", "\\hookleftarrow");
-defineSymbol(math, main, rel, "\u21aa", "\\hookrightarrow");
-defineSymbol(math, main, rel, "\u2198", "\\searrow");
-defineSymbol(math, main, rel, "\u21bc", "\\leftharpoonup");
-defineSymbol(math, main, rel, "\u21c0", "\\rightharpoonup");
-defineSymbol(math, main, rel, "\u2199", "\\swarrow");
-defineSymbol(math, main, rel, "\u21bd", "\\leftharpoondown");
-defineSymbol(math, main, rel, "\u21c1", "\\rightharpoondown");
-defineSymbol(math, main, rel, "\u2196", "\\nwarrow");
-defineSymbol(math, main, rel, "\u21cc", "\\rightleftharpoons");
-
-// AMS Negated Binary Relations
-defineSymbol(math, ams, rel, "\u226e", "\\nless");
-defineSymbol(math, ams, rel, "\ue010", "\\nleqslant");
-defineSymbol(math, ams, rel, "\ue011", "\\nleqq");
-defineSymbol(math, ams, rel, "\u2a87", "\\lneq");
-defineSymbol(math, ams, rel, "\u2268", "\\lneqq");
-defineSymbol(math, ams, rel, "\ue00c", "\\lvertneqq");
-defineSymbol(math, ams, rel, "\u22e6", "\\lnsim");
-defineSymbol(math, ams, rel, "\u2a89", "\\lnapprox");
-defineSymbol(math, ams, rel, "\u2280", "\\nprec");
-defineSymbol(math, ams, rel, "\u22e0", "\\npreceq");
-defineSymbol(math, ams, rel, "\u22e8", "\\precnsim");
-defineSymbol(math, ams, rel, "\u2ab9", "\\precnapprox");
-defineSymbol(math, ams, rel, "\u2241", "\\nsim");
-defineSymbol(math, ams, rel, "\ue006", "\\nshortmid");
-defineSymbol(math, ams, rel, "\u2224", "\\nmid");
-defineSymbol(math, ams, rel, "\u22ac", "\\nvdash");
-defineSymbol(math, ams, rel, "\u22ad", "\\nvDash");
-defineSymbol(math, ams, rel, "\u22ea", "\\ntriangleleft");
-defineSymbol(math, ams, rel, "\u22ec", "\\ntrianglelefteq");
-defineSymbol(math, ams, rel, "\u228a", "\\subsetneq");
-defineSymbol(math, ams, rel, "\ue01a", "\\varsubsetneq");
-defineSymbol(math, ams, rel, "\u2acb", "\\subsetneqq");
-defineSymbol(math, ams, rel, "\ue017", "\\varsubsetneqq");
-defineSymbol(math, ams, rel, "\u226f", "\\ngtr");
-defineSymbol(math, ams, rel, "\ue00f", "\\ngeqslant");
-defineSymbol(math, ams, rel, "\ue00e", "\\ngeqq");
-defineSymbol(math, ams, rel, "\u2a88", "\\gneq");
-defineSymbol(math, ams, rel, "\u2269", "\\gneqq");
-defineSymbol(math, ams, rel, "\ue00d", "\\gvertneqq");
-defineSymbol(math, ams, rel, "\u22e7", "\\gnsim");
-defineSymbol(math, ams, rel, "\u2a8a", "\\gnapprox");
-defineSymbol(math, ams, rel, "\u2281", "\\nsucc");
-defineSymbol(math, ams, rel, "\u22e1", "\\nsucceq");
-defineSymbol(math, ams, rel, "\u22e9", "\\succnsim");
-defineSymbol(math, ams, rel, "\u2aba", "\\succnapprox");
-defineSymbol(math, ams, rel, "\u2246", "\\ncong");
-defineSymbol(math, ams, rel, "\ue007", "\\nshortparallel");
-defineSymbol(math, ams, rel, "\u2226", "\\nparallel");
-defineSymbol(math, ams, rel, "\u22af", "\\nVDash");
-defineSymbol(math, ams, rel, "\u22eb", "\\ntriangleright");
-defineSymbol(math, ams, rel, "\u22ed", "\\ntrianglerighteq");
-defineSymbol(math, ams, rel, "\ue018", "\\nsupseteqq");
-defineSymbol(math, ams, rel, "\u228b", "\\supsetneq");
-defineSymbol(math, ams, rel, "\ue01b", "\\varsupsetneq");
-defineSymbol(math, ams, rel, "\u2acc", "\\supsetneqq");
-defineSymbol(math, ams, rel, "\ue019", "\\varsupsetneqq");
-defineSymbol(math, ams, rel, "\u22ae", "\\nVdash");
-defineSymbol(math, ams, rel, "\u2ab5", "\\precneqq");
-defineSymbol(math, ams, rel, "\u2ab6", "\\succneqq");
-defineSymbol(math, ams, rel, "\ue016", "\\nsubseteqq");
-defineSymbol(math, ams, bin, "\u22b4", "\\unlhd");
-defineSymbol(math, ams, bin, "\u22b5", "\\unrhd");
-
-// AMS Negated Arrows
-defineSymbol(math, ams, rel, "\u219a", "\\nleftarrow");
-defineSymbol(math, ams, rel, "\u219b", "\\nrightarrow");
-defineSymbol(math, ams, rel, "\u21cd", "\\nLeftarrow");
-defineSymbol(math, ams, rel, "\u21cf", "\\nRightarrow");
-defineSymbol(math, ams, rel, "\u21ae", "\\nleftrightarrow");
-defineSymbol(math, ams, rel, "\u21ce", "\\nLeftrightarrow");
-
-// AMS Misc
-defineSymbol(math, ams, rel, "\u25b3", "\\vartriangle");
-defineSymbol(math, ams, textord, "\u210f", "\\hslash");
-defineSymbol(math, ams, textord, "\u25bd", "\\triangledown");
-defineSymbol(math, ams, textord, "\u25ca", "\\lozenge");
-defineSymbol(math, ams, textord, "\u24c8", "\\circledS");
-defineSymbol(math, ams, textord, "\u00ae", "\\circledR");
-defineSymbol(math, ams, textord, "\u2221", "\\measuredangle");
-defineSymbol(math, ams, textord, "\u2204", "\\nexists");
-defineSymbol(math, ams, textord, "\u2127", "\\mho");
-defineSymbol(math, ams, textord, "\u2132", "\\Finv");
-defineSymbol(math, ams, textord, "\u2141", "\\Game");
-defineSymbol(math, ams, textord, "\u006b", "\\Bbbk");
-defineSymbol(math, ams, textord, "\u2035", "\\backprime");
-defineSymbol(math, ams, textord, "\u25b2", "\\blacktriangle");
-defineSymbol(math, ams, textord, "\u25bc", "\\blacktriangledown");
-defineSymbol(math, ams, textord, "\u25a0", "\\blacksquare");
-defineSymbol(math, ams, textord, "\u29eb", "\\blacklozenge");
-defineSymbol(math, ams, textord, "\u2605", "\\bigstar");
-defineSymbol(math, ams, textord, "\u2222", "\\sphericalangle");
-defineSymbol(math, ams, textord, "\u2201", "\\complement");
-defineSymbol(math, ams, textord, "\u00f0", "\\eth");
-defineSymbol(math, ams, textord, "\u2571", "\\diagup");
-defineSymbol(math, ams, textord, "\u2572", "\\diagdown");
-defineSymbol(math, ams, textord, "\u25a1", "\\square");
-defineSymbol(math, ams, textord, "\u25a1", "\\Box");
-defineSymbol(math, ams, textord, "\u25ca", "\\Diamond");
-defineSymbol(math, ams, textord, "\u00a5", "\\yen");
-defineSymbol(math, ams, textord, "\u2713", "\\checkmark");
-
-// AMS Hebrew
-defineSymbol(math, ams, textord, "\u2136", "\\beth");
-defineSymbol(math, ams, textord, "\u2138", "\\daleth");
-defineSymbol(math, ams, textord, "\u2137", "\\gimel");
-
-// AMS Greek
-defineSymbol(math, ams, textord, "\u03dd", "\\digamma");
-defineSymbol(math, ams, textord, "\u03f0", "\\varkappa");
-
-// AMS Delimiters
-defineSymbol(math, ams, open, "\u250c", "\\ulcorner");
-defineSymbol(math, ams, close, "\u2510", "\\urcorner");
-defineSymbol(math, ams, open, "\u2514", "\\llcorner");
-defineSymbol(math, ams, close, "\u2518", "\\lrcorner");
-
-// AMS Binary Relations
-defineSymbol(math, ams, rel, "\u2266", "\\leqq");
-defineSymbol(math, ams, rel, "\u2a7d", "\\leqslant");
-defineSymbol(math, ams, rel, "\u2a95", "\\eqslantless");
-defineSymbol(math, ams, rel, "\u2272", "\\lesssim");
-defineSymbol(math, ams, rel, "\u2a85", "\\lessapprox");
-defineSymbol(math, ams, rel, "\u224a", "\\approxeq");
-defineSymbol(math, ams, bin, "\u22d6", "\\lessdot");
-defineSymbol(math, ams, rel, "\u22d8", "\\lll");
-defineSymbol(math, ams, rel, "\u2276", "\\lessgtr");
-defineSymbol(math, ams, rel, "\u22da", "\\lesseqgtr");
-defineSymbol(math, ams, rel, "\u2a8b", "\\lesseqqgtr");
-defineSymbol(math, ams, rel, "\u2251", "\\doteqdot");
-defineSymbol(math, ams, rel, "\u2253", "\\risingdotseq");
-defineSymbol(math, ams, rel, "\u2252", "\\fallingdotseq");
-defineSymbol(math, ams, rel, "\u223d", "\\backsim");
-defineSymbol(math, ams, rel, "\u22cd", "\\backsimeq");
-defineSymbol(math, ams, rel, "\u2ac5", "\\subseteqq");
-defineSymbol(math, ams, rel, "\u22d0", "\\Subset");
-defineSymbol(math, ams, rel, "\u228f", "\\sqsubset");
-defineSymbol(math, ams, rel, "\u227c", "\\preccurlyeq");
-defineSymbol(math, ams, rel, "\u22de", "\\curlyeqprec");
-defineSymbol(math, ams, rel, "\u227e", "\\precsim");
-defineSymbol(math, ams, rel, "\u2ab7", "\\precapprox");
-defineSymbol(math, ams, rel, "\u22b2", "\\vartriangleleft");
-defineSymbol(math, ams, rel, "\u22b4", "\\trianglelefteq");
-defineSymbol(math, ams, rel, "\u22a8", "\\vDash");
-defineSymbol(math, ams, rel, "\u22aa", "\\Vvdash");
-defineSymbol(math, ams, rel, "\u2323", "\\smallsmile");
-defineSymbol(math, ams, rel, "\u2322", "\\smallfrown");
-defineSymbol(math, ams, rel, "\u224f", "\\bumpeq");
-defineSymbol(math, ams, rel, "\u224e", "\\Bumpeq");
-defineSymbol(math, ams, rel, "\u2267", "\\geqq");
-defineSymbol(math, ams, rel, "\u2a7e", "\\geqslant");
-defineSymbol(math, ams, rel, "\u2a96", "\\eqslantgtr");
-defineSymbol(math, ams, rel, "\u2273", "\\gtrsim");
-defineSymbol(math, ams, rel, "\u2a86", "\\gtrapprox");
-defineSymbol(math, ams, bin, "\u22d7", "\\gtrdot");
-defineSymbol(math, ams, rel, "\u22d9", "\\ggg");
-defineSymbol(math, ams, rel, "\u2277", "\\gtrless");
-defineSymbol(math, ams, rel, "\u22db", "\\gtreqless");
-defineSymbol(math, ams, rel, "\u2a8c", "\\gtreqqless");
-defineSymbol(math, ams, rel, "\u2256", "\\eqcirc");
-defineSymbol(math, ams, rel, "\u2257", "\\circeq");
-defineSymbol(math, ams, rel, "\u225c", "\\triangleq");
-defineSymbol(math, ams, rel, "\u223c", "\\thicksim");
-defineSymbol(math, ams, rel, "\u2248", "\\thickapprox");
-defineSymbol(math, ams, rel, "\u2ac6", "\\supseteqq");
-defineSymbol(math, ams, rel, "\u22d1", "\\Supset");
-defineSymbol(math, ams, rel, "\u2290", "\\sqsupset");
-defineSymbol(math, ams, rel, "\u227d", "\\succcurlyeq");
-defineSymbol(math, ams, rel, "\u22df", "\\curlyeqsucc");
-defineSymbol(math, ams, rel, "\u227f", "\\succsim");
-defineSymbol(math, ams, rel, "\u2ab8", "\\succapprox");
-defineSymbol(math, ams, rel, "\u22b3", "\\vartriangleright");
-defineSymbol(math, ams, rel, "\u22b5", "\\trianglerighteq");
-defineSymbol(math, ams, rel, "\u22a9", "\\Vdash");
-defineSymbol(math, ams, rel, "\u2223", "\\shortmid");
-defineSymbol(math, ams, rel, "\u2225", "\\shortparallel");
-defineSymbol(math, ams, rel, "\u226c", "\\between");
-defineSymbol(math, ams, rel, "\u22d4", "\\pitchfork");
-defineSymbol(math, ams, rel, "\u221d", "\\varpropto");
-defineSymbol(math, ams, rel, "\u25c0", "\\blacktriangleleft");
-defineSymbol(math, ams, rel, "\u2234", "\\therefore");
-defineSymbol(math, ams, rel, "\u220d", "\\backepsilon");
-defineSymbol(math, ams, rel, "\u25b6", "\\blacktriangleright");
-defineSymbol(math, ams, rel, "\u2235", "\\because");
-defineSymbol(math, ams, rel, "\u22d8", "\\llless");
-defineSymbol(math, ams, rel, "\u22d9", "\\gggtr");
-defineSymbol(math, ams, bin, "\u22b2", "\\lhd");
-defineSymbol(math, ams, bin, "\u22b3", "\\rhd");
-defineSymbol(math, ams, rel, "\u2242", "\\eqsim");
-defineSymbol(math, main, rel, "\u22c8", "\\Join");
-defineSymbol(math, ams, rel, "\u2251", "\\Doteq");
-
-// AMS Binary Operators
-defineSymbol(math, ams, bin, "\u2214", "\\dotplus");
-defineSymbol(math, ams, bin, "\u2216", "\\smallsetminus");
-defineSymbol(math, ams, bin, "\u22d2", "\\Cap");
-defineSymbol(math, ams, bin, "\u22d3", "\\Cup");
-defineSymbol(math, ams, bin, "\u2a5e", "\\doublebarwedge");
-defineSymbol(math, ams, bin, "\u229f", "\\boxminus");
-defineSymbol(math, ams, bin, "\u229e", "\\boxplus");
-defineSymbol(math, ams, bin, "\u22c7", "\\divideontimes");
-defineSymbol(math, ams, bin, "\u22c9", "\\ltimes");
-defineSymbol(math, ams, bin, "\u22ca", "\\rtimes");
-defineSymbol(math, ams, bin, "\u22cb", "\\leftthreetimes");
-defineSymbol(math, ams, bin, "\u22cc", "\\rightthreetimes");
-defineSymbol(math, ams, bin, "\u22cf", "\\curlywedge");
-defineSymbol(math, ams, bin, "\u22ce", "\\curlyvee");
-defineSymbol(math, ams, bin, "\u229d", "\\circleddash");
-defineSymbol(math, ams, bin, "\u229b", "\\circledast");
-defineSymbol(math, ams, bin, "\u22c5", "\\centerdot");
-defineSymbol(math, ams, bin, "\u22ba", "\\intercal");
-defineSymbol(math, ams, bin, "\u22d2", "\\doublecap");
-defineSymbol(math, ams, bin, "\u22d3", "\\doublecup");
-defineSymbol(math, ams, bin, "\u22a0", "\\boxtimes");
-
-// AMS Arrows
-defineSymbol(math, ams, rel, "\u21e2", "\\dashrightarrow");
-defineSymbol(math, ams, rel, "\u21e0", "\\dashleftarrow");
-defineSymbol(math, ams, rel, "\u21c7", "\\leftleftarrows");
-defineSymbol(math, ams, rel, "\u21c6", "\\leftrightarrows");
-defineSymbol(math, ams, rel, "\u21da", "\\Lleftarrow");
-defineSymbol(math, ams, rel, "\u219e", "\\twoheadleftarrow");
-defineSymbol(math, ams, rel, "\u21a2", "\\leftarrowtail");
-defineSymbol(math, ams, rel, "\u21ab", "\\looparrowleft");
-defineSymbol(math, ams, rel, "\u21cb", "\\leftrightharpoons");
-defineSymbol(math, ams, rel, "\u21b6", "\\curvearrowleft");
-defineSymbol(math, ams, rel, "\u21ba", "\\circlearrowleft");
-defineSymbol(math, ams, rel, "\u21b0", "\\Lsh");
-defineSymbol(math, ams, rel, "\u21c8", "\\upuparrows");
-defineSymbol(math, ams, rel, "\u21bf", "\\upharpoonleft");
-defineSymbol(math, ams, rel, "\u21c3", "\\downharpoonleft");
-defineSymbol(math, ams, rel, "\u22b8", "\\multimap");
-defineSymbol(math, ams, rel, "\u21ad", "\\leftrightsquigarrow");
-defineSymbol(math, ams, rel, "\u21c9", "\\rightrightarrows");
-defineSymbol(math, ams, rel, "\u21c4", "\\rightleftarrows");
-defineSymbol(math, ams, rel, "\u21a0", "\\twoheadrightarrow");
-defineSymbol(math, ams, rel, "\u21a3", "\\rightarrowtail");
-defineSymbol(math, ams, rel, "\u21ac", "\\looparrowright");
-defineSymbol(math, ams, rel, "\u21b7", "\\curvearrowright");
-defineSymbol(math, ams, rel, "\u21bb", "\\circlearrowright");
-defineSymbol(math, ams, rel, "\u21b1", "\\Rsh");
-defineSymbol(math, ams, rel, "\u21ca", "\\downdownarrows");
-defineSymbol(math, ams, rel, "\u21be", "\\upharpoonright");
-defineSymbol(math, ams, rel, "\u21c2", "\\downharpoonright");
-defineSymbol(math, ams, rel, "\u21dd", "\\rightsquigarrow");
-defineSymbol(math, ams, rel, "\u21dd", "\\leadsto");
-defineSymbol(math, ams, rel, "\u21db", "\\Rrightarrow");
-defineSymbol(math, ams, rel, "\u21be", "\\restriction");
-
-defineSymbol(math, main, textord, "\u2018", "`");
-defineSymbol(math, main, textord, "$", "\\$");
-defineSymbol(math, main, textord, "%", "\\%");
-defineSymbol(math, main, textord, "_", "\\_");
-defineSymbol(math, main, textord, "\u2220", "\\angle");
-defineSymbol(math, main, textord, "\u221e", "\\infty");
-defineSymbol(math, main, textord, "\u2032", "\\prime");
-defineSymbol(math, main, textord, "\u25b3", "\\triangle");
-defineSymbol(math, main, textord, "\u0393", "\\Gamma");
-defineSymbol(math, main, textord, "\u0394", "\\Delta");
-defineSymbol(math, main, textord, "\u0398", "\\Theta");
-defineSymbol(math, main, textord, "\u039b", "\\Lambda");
-defineSymbol(math, main, textord, "\u039e", "\\Xi");
-defineSymbol(math, main, textord, "\u03a0", "\\Pi");
-defineSymbol(math, main, textord, "\u03a3", "\\Sigma");
-defineSymbol(math, main, textord, "\u03a5", "\\Upsilon");
-defineSymbol(math, main, textord, "\u03a6", "\\Phi");
-defineSymbol(math, main, textord, "\u03a8", "\\Psi");
-defineSymbol(math, main, textord, "\u03a9", "\\Omega");
-defineSymbol(math, main, textord, "\u00ac", "\\neg");
-defineSymbol(math, main, textord, "\u00ac", "\\lnot");
-defineSymbol(math, main, textord, "\u22a4", "\\top");
-defineSymbol(math, main, textord, "\u22a5", "\\bot");
-defineSymbol(math, main, textord, "\u2205", "\\emptyset");
-defineSymbol(math, ams, textord, "\u2205", "\\varnothing");
-defineSymbol(math, main, mathord, "\u03b1", "\\alpha");
-defineSymbol(math, main, mathord, "\u03b2", "\\beta");
-defineSymbol(math, main, mathord, "\u03b3", "\\gamma");
-defineSymbol(math, main, mathord, "\u03b4", "\\delta");
-defineSymbol(math, main, mathord, "\u03f5", "\\epsilon");
-defineSymbol(math, main, mathord, "\u03b6", "\\zeta");
-defineSymbol(math, main, mathord, "\u03b7", "\\eta");
-defineSymbol(math, main, mathord, "\u03b8", "\\theta");
-defineSymbol(math, main, mathord, "\u03b9", "\\iota");
-defineSymbol(math, main, mathord, "\u03ba", "\\kappa");
-defineSymbol(math, main, mathord, "\u03bb", "\\lambda");
-defineSymbol(math, main, mathord, "\u03bc", "\\mu");
-defineSymbol(math, main, mathord, "\u03bd", "\\nu");
-defineSymbol(math, main, mathord, "\u03be", "\\xi");
-defineSymbol(math, main, mathord, "o", "\\omicron");
-defineSymbol(math, main, mathord, "\u03c0", "\\pi");
-defineSymbol(math, main, mathord, "\u03c1", "\\rho");
-defineSymbol(math, main, mathord, "\u03c3", "\\sigma");
-defineSymbol(math, main, mathord, "\u03c4", "\\tau");
-defineSymbol(math, main, mathord, "\u03c5", "\\upsilon");
-defineSymbol(math, main, mathord, "\u03d5", "\\phi");
-defineSymbol(math, main, mathord, "\u03c7", "\\chi");
-defineSymbol(math, main, mathord, "\u03c8", "\\psi");
-defineSymbol(math, main, mathord, "\u03c9", "\\omega");
-defineSymbol(math, main, mathord, "\u03b5", "\\varepsilon");
-defineSymbol(math, main, mathord, "\u03d1", "\\vartheta");
-defineSymbol(math, main, mathord, "\u03d6", "\\varpi");
-defineSymbol(math, main, mathord, "\u03f1", "\\varrho");
-defineSymbol(math, main, mathord, "\u03c2", "\\varsigma");
-defineSymbol(math, main, mathord, "\u03c6", "\\varphi");
-defineSymbol(math, main, bin, "\u2217", "*");
-defineSymbol(math, main, bin, "+", "+");
-defineSymbol(math, main, bin, "\u2212", "-");
-defineSymbol(math, main, bin, "\u22c5", "\\cdot");
-defineSymbol(math, main, bin, "\u2218", "\\circ");
-defineSymbol(math, main, bin, "\u00f7", "\\div");
-defineSymbol(math, main, bin, "\u00b1", "\\pm");
-defineSymbol(math, main, bin, "\u00d7", "\\times");
-defineSymbol(math, main, bin, "\u2229", "\\cap");
-defineSymbol(math, main, bin, "\u222a", "\\cup");
-defineSymbol(math, main, bin, "\u2216", "\\setminus");
-defineSymbol(math, main, bin, "\u2227", "\\land");
-defineSymbol(math, main, bin, "\u2228", "\\lor");
-defineSymbol(math, main, bin, "\u2227", "\\wedge");
-defineSymbol(math, main, bin, "\u2228", "\\vee");
-defineSymbol(math, main, textord, "\u221a", "\\surd");
-defineSymbol(math, main, open, "(", "(");
-defineSymbol(math, main, open, "[", "[");
-defineSymbol(math, main, open, "\u27e8", "\\langle");
-defineSymbol(math, main, open, "\u2223", "\\lvert");
-defineSymbol(math, main, open, "\u2225", "\\lVert");
-defineSymbol(math, main, close, ")", ")");
-defineSymbol(math, main, close, "]", "]");
-defineSymbol(math, main, close, "?", "?");
-defineSymbol(math, main, close, "!", "!");
-defineSymbol(math, main, close, "\u27e9", "\\rangle");
-defineSymbol(math, main, close, "\u2223", "\\rvert");
-defineSymbol(math, main, close, "\u2225", "\\rVert");
-defineSymbol(math, main, rel, "=", "=");
-defineSymbol(math, main, rel, "<", "<");
-defineSymbol(math, main, rel, ">", ">");
-defineSymbol(math, main, rel, ":", ":");
-defineSymbol(math, main, rel, "\u2248", "\\approx");
-defineSymbol(math, main, rel, "\u2245", "\\cong");
-defineSymbol(math, main, rel, "\u2265", "\\ge");
-defineSymbol(math, main, rel, "\u2265", "\\geq");
-defineSymbol(math, main, rel, "\u2190", "\\gets");
-defineSymbol(math, main, rel, ">", "\\gt");
-defineSymbol(math, main, rel, "\u2208", "\\in");
-defineSymbol(math, main, rel, "\u2209", "\\notin");
-defineSymbol(math, main, rel, "\u2282", "\\subset");
-defineSymbol(math, main, rel, "\u2283", "\\supset");
-defineSymbol(math, main, rel, "\u2286", "\\subseteq");
-defineSymbol(math, main, rel, "\u2287", "\\supseteq");
-defineSymbol(math, ams, rel, "\u2288", "\\nsubseteq");
-defineSymbol(math, ams, rel, "\u2289", "\\nsupseteq");
-defineSymbol(math, main, rel, "\u22a8", "\\models");
-defineSymbol(math, main, rel, "\u2190", "\\leftarrow");
-defineSymbol(math, main, rel, "\u2264", "\\le");
-defineSymbol(math, main, rel, "\u2264", "\\leq");
-defineSymbol(math, main, rel, "<", "\\lt");
-defineSymbol(math, main, rel, "\u2260", "\\ne");
-defineSymbol(math, main, rel, "\u2260", "\\neq");
-defineSymbol(math, main, rel, "\u2192", "\\rightarrow");
-defineSymbol(math, main, rel, "\u2192", "\\to");
-defineSymbol(math, ams, rel, "\u2271", "\\ngeq");
-defineSymbol(math, ams, rel, "\u2270", "\\nleq");
-defineSymbol(math, main, spacing, null, "\\!");
-defineSymbol(math, main, spacing, "\u00a0", "\\ ");
-defineSymbol(math, main, spacing, "\u00a0", "~");
-defineSymbol(math, main, spacing, null, "\\,");
-defineSymbol(math, main, spacing, null, "\\:");
-defineSymbol(math, main, spacing, null, "\\;");
-defineSymbol(math, main, spacing, null, "\\enspace");
-defineSymbol(math, main, spacing, null, "\\qquad");
-defineSymbol(math, main, spacing, null, "\\quad");
-defineSymbol(math, main, spacing, "\u00a0", "\\space");
-defineSymbol(math, main, punct, ",", ",");
-defineSymbol(math, main, punct, ";", ";");
-defineSymbol(math, main, punct, ":", "\\colon");
-defineSymbol(math, ams, bin, "\u22bc", "\\barwedge");
-defineSymbol(math, ams, bin, "\u22bb", "\\veebar");
-defineSymbol(math, main, bin, "\u2299", "\\odot");
-defineSymbol(math, main, bin, "\u2295", "\\oplus");
-defineSymbol(math, main, bin, "\u2297", "\\otimes");
-defineSymbol(math, main, textord, "\u2202", "\\partial");
-defineSymbol(math, main, bin, "\u2298", "\\oslash");
-defineSymbol(math, ams, bin, "\u229a", "\\circledcirc");
-defineSymbol(math, ams, bin, "\u22a1", "\\boxdot");
-defineSymbol(math, main, bin, "\u25b3", "\\bigtriangleup");
-defineSymbol(math, main, bin, "\u25bd", "\\bigtriangledown");
-defineSymbol(math, main, bin, "\u2020", "\\dagger");
-defineSymbol(math, main, bin, "\u22c4", "\\diamond");
-defineSymbol(math, main, bin, "\u22c6", "\\star");
-defineSymbol(math, main, bin, "\u25c3", "\\triangleleft");
-defineSymbol(math, main, bin, "\u25b9", "\\triangleright");
-defineSymbol(math, main, open, "{", "\\{");
-defineSymbol(math, main, close, "}", "\\}");
-defineSymbol(math, main, open, "{", "\\lbrace");
-defineSymbol(math, main, close, "}", "\\rbrace");
-defineSymbol(math, main, open, "[", "\\lbrack");
-defineSymbol(math, main, close, "]", "\\rbrack");
-defineSymbol(math, main, open, "\u230a", "\\lfloor");
-defineSymbol(math, main, close, "\u230b", "\\rfloor");
-defineSymbol(math, main, open, "\u2308", "\\lceil");
-defineSymbol(math, main, close, "\u2309", "\\rceil");
-defineSymbol(math, main, textord, "\\", "\\backslash");
-defineSymbol(math, main, textord, "\u2223", "|");
-defineSymbol(math, main, textord, "\u2223", "\\vert");
-defineSymbol(math, main, textord, "\u2225", "\\|");
-defineSymbol(math, main, textord, "\u2225", "\\Vert");
-defineSymbol(math, main, rel, "\u2191", "\\uparrow");
-defineSymbol(math, main, rel, "\u21d1", "\\Uparrow");
-defineSymbol(math, main, rel, "\u2193", "\\downarrow");
-defineSymbol(math, main, rel, "\u21d3", "\\Downarrow");
-defineSymbol(math, main, rel, "\u2195", "\\updownarrow");
-defineSymbol(math, main, rel, "\u21d5", "\\Updownarrow");
-defineSymbol(math, math, op, "\u2210", "\\coprod");
-defineSymbol(math, math, op, "\u22c1", "\\bigvee");
-defineSymbol(math, math, op, "\u22c0", "\\bigwedge");
-defineSymbol(math, math, op, "\u2a04", "\\biguplus");
-defineSymbol(math, math, op, "\u22c2", "\\bigcap");
-defineSymbol(math, math, op, "\u22c3", "\\bigcup");
-defineSymbol(math, math, op, "\u222b", "\\int");
-defineSymbol(math, math, op, "\u222b", "\\intop");
-defineSymbol(math, math, op, "\u222c", "\\iint");
-defineSymbol(math, math, op, "\u222d", "\\iiint");
-defineSymbol(math, math, op, "\u220f", "\\prod");
-defineSymbol(math, math, op, "\u2211", "\\sum");
-defineSymbol(math, math, op, "\u2a02", "\\bigotimes");
-defineSymbol(math, math, op, "\u2a01", "\\bigoplus");
-defineSymbol(math, math, op, "\u2a00", "\\bigodot");
-defineSymbol(math, math, op, "\u222e", "\\oint");
-defineSymbol(math, math, op, "\u2a06", "\\bigsqcup");
-defineSymbol(math, math, op, "\u222b", "\\smallint");
-defineSymbol(math, main, inner, "\u2026", "\\ldots");
-defineSymbol(math, main, inner, "\u22ef", "\\cdots");
-defineSymbol(math, main, inner, "\u22f1", "\\ddots");
-defineSymbol(math, main, textord, "\u22ee", "\\vdots");
-defineSymbol(math, main, accent, "\u00b4", "\\acute");
-defineSymbol(math, main, accent, "\u0060", "\\grave");
-defineSymbol(math, main, accent, "\u00a8", "\\ddot");
-defineSymbol(math, main, accent, "\u007e", "\\tilde");
-defineSymbol(math, main, accent, "\u00af", "\\bar");
-defineSymbol(math, main, accent, "\u02d8", "\\breve");
-defineSymbol(math, main, accent, "\u02c7", "\\check");
-defineSymbol(math, main, accent, "\u005e", "\\hat");
-defineSymbol(math, main, accent, "\u20d7", "\\vec");
-defineSymbol(math, main, accent, "\u02d9", "\\dot");
-defineSymbol(math, main, mathord, "\u0131", "\\imath");
-defineSymbol(math, main, mathord, "\u0237", "\\jmath");
-
-defineSymbol(text, main, spacing, "\u00a0", "\\ ");
-defineSymbol(text, main, spacing, "\u00a0", " ");
-defineSymbol(text, main, spacing, "\u00a0", "~");
-
-// There are lots of symbols which are the same, so we add them in afterwards.
-var i;
-var ch;
-
-// All of these are textords in math mode
-var mathTextSymbols = "0123456789/@.\"";
-for (i = 0; i < mathTextSymbols.length; i++) {
-    ch = mathTextSymbols.charAt(i);
-    defineSymbol(math, main, textord, ch, ch);
-}
-
-// All of these are textords in text mode
-var textSymbols = "0123456789`!@*()-=+[]'\";:?/.,";
-for (i = 0; i < textSymbols.length; i++) {
-    ch = textSymbols.charAt(i);
-    defineSymbol(text, main, textord, ch, ch);
-}
-
-// All of these are textords in text mode, and mathords in math mode
-var letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-for (i = 0; i < letters.length; i++) {
-    ch = letters.charAt(i);
-    defineSymbol(math, main, mathord, ch, ch);
-    defineSymbol(text, main, textord, ch, ch);
-}
-
-
-/***/ }),
-/* 267 */
-/***/ (function(module, exports, __webpack_require__) {
-
-// to indexed object, toObject with fallback for non-array-like ES3 strings
-var IObject = __webpack_require__(307);
-var defined = __webpack_require__(268);
-module.exports = function (it) {
-  return IObject(defined(it));
-};
-
-
-/***/ }),
-/* 268 */
-/***/ (function(module, exports) {
-
-// 7.2.1 RequireObjectCoercible(argument)
-module.exports = function (it) {
-  if (it == undefined) throw TypeError("Can't call method on  " + it);
-  return it;
-};
-
-
-/***/ }),
-/* 269 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var anObject = __webpack_require__(259);
-var IE8_DOM_DEFINE = __webpack_require__(311);
-var toPrimitive = __webpack_require__(312);
-var dP = Object.defineProperty;
-
-exports.f = __webpack_require__(260) ? Object.defineProperty : function defineProperty(O, P, Attributes) {
-  anObject(O);
-  P = toPrimitive(P, true);
-  anObject(Attributes);
-  if (IE8_DOM_DEFINE) try {
-    return dP(O, P, Attributes);
-  } catch (e) { /* empty */ }
-  if ('get' in Attributes || 'set' in Attributes) throw TypeError('Accessors not supported!');
-  if ('value' in Attributes) O[P] = Attributes.value;
-  return O;
-};
-
-
-/***/ }),
-/* 270 */
-/***/ (function(module, exports) {
-
-module.exports = function (it) {
-  return typeof it === 'object' ? it !== null : typeof it === 'function';
-};
-
-
-/***/ }),
-/* 271 */
-/***/ (function(module, exports) {
-
-module.exports = function (exec) {
-  try {
-    return !!exec();
-  } catch (e) {
-    return true;
-  }
-};
-
-
-/***/ }),
-/* 272 */
-/***/ (function(module, exports) {
-
-// 7.1.4 ToInteger
-var ceil = Math.ceil;
-var floor = Math.floor;
-module.exports = function (it) {
-  return isNaN(it = +it) ? 0 : (it > 0 ? floor : ceil)(it);
-};
-
-
-/***/ }),
-/* 273 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var shared = __webpack_require__(284)('keys');
-var uid = __webpack_require__(285);
-module.exports = function (key) {
-  return shared[key] || (shared[key] = uid(key));
-};
-
-
-/***/ }),
-/* 274 */
-/***/ (function(module, exports) {
-
-module.exports=/[!-#%-\*,-/:;\?@\[-\]_\{\}\xA1\xA7\xAB\xB6\xB7\xBB\xBF\u037E\u0387\u055A-\u055F\u0589\u058A\u05BE\u05C0\u05C3\u05C6\u05F3\u05F4\u0609\u060A\u060C\u060D\u061B\u061E\u061F\u066A-\u066D\u06D4\u0700-\u070D\u07F7-\u07F9\u0830-\u083E\u085E\u0964\u0965\u0970\u09FD\u0AF0\u0DF4\u0E4F\u0E5A\u0E5B\u0F04-\u0F12\u0F14\u0F3A-\u0F3D\u0F85\u0FD0-\u0FD4\u0FD9\u0FDA\u104A-\u104F\u10FB\u1360-\u1368\u1400\u166D\u166E\u169B\u169C\u16EB-\u16ED\u1735\u1736\u17D4-\u17D6\u17D8-\u17DA\u1800-\u180A\u1944\u1945\u1A1E\u1A1F\u1AA0-\u1AA6\u1AA8-\u1AAD\u1B5A-\u1B60\u1BFC-\u1BFF\u1C3B-\u1C3F\u1C7E\u1C7F\u1CC0-\u1CC7\u1CD3\u2010-\u2027\u2030-\u2043\u2045-\u2051\u2053-\u205E\u207D\u207E\u208D\u208E\u2308-\u230B\u2329\u232A\u2768-\u2775\u27C5\u27C6\u27E6-\u27EF\u2983-\u2998\u29D8-\u29DB\u29FC\u29FD\u2CF9-\u2CFC\u2CFE\u2CFF\u2D70\u2E00-\u2E2E\u2E30-\u2E49\u3001-\u3003\u3008-\u3011\u3014-\u301F\u3030\u303D\u30A0\u30FB\uA4FE\uA4FF\uA60D-\uA60F\uA673\uA67E\uA6F2-\uA6F7\uA874-\uA877\uA8CE\uA8CF\uA8F8-\uA8FA\uA8FC\uA92E\uA92F\uA95F\uA9C1-\uA9CD\uA9DE\uA9DF\uAA5C-\uAA5F\uAADE\uAADF\uAAF0\uAAF1\uABEB\uFD3E\uFD3F\uFE10-\uFE19\uFE30-\uFE52\uFE54-\uFE61\uFE63\uFE68\uFE6A\uFE6B\uFF01-\uFF03\uFF05-\uFF0A\uFF0C-\uFF0F\uFF1A\uFF1B\uFF1F\uFF20\uFF3B-\uFF3D\uFF3F\uFF5B\uFF5D\uFF5F-\uFF65]|\uD800[\uDD00-\uDD02\uDF9F\uDFD0]|\uD801\uDD6F|\uD802[\uDC57\uDD1F\uDD3F\uDE50-\uDE58\uDE7F\uDEF0-\uDEF6\uDF39-\uDF3F\uDF99-\uDF9C]|\uD804[\uDC47-\uDC4D\uDCBB\uDCBC\uDCBE-\uDCC1\uDD40-\uDD43\uDD74\uDD75\uDDC5-\uDDC9\uDDCD\uDDDB\uDDDD-\uDDDF\uDE38-\uDE3D\uDEA9]|\uD805[\uDC4B-\uDC4F\uDC5B\uDC5D\uDCC6\uDDC1-\uDDD7\uDE41-\uDE43\uDE60-\uDE6C\uDF3C-\uDF3E]|\uD806[\uDE3F-\uDE46\uDE9A-\uDE9C\uDE9E-\uDEA2]|\uD807[\uDC41-\uDC45\uDC70\uDC71]|\uD809[\uDC70-\uDC74]|\uD81A[\uDE6E\uDE6F\uDEF5\uDF37-\uDF3B\uDF44]|\uD82F\uDC9F|\uD836[\uDE87-\uDE8B]|\uD83A[\uDD5E\uDD5F]/
-
-/***/ }),
-/* 275 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Parse link label
-//
-// this function assumes that first character ("[") already matches;
-// returns the end of the label
-//
-
-
-module.exports = function parseLinkLabel(state, start, disableNested) {
-  var level, found, marker, prevPos,
-      labelEnd = -1,
-      max = state.posMax,
-      oldPos = state.pos;
-
-  state.pos = start + 1;
-  level = 1;
-
-  while (state.pos < max) {
-    marker = state.src.charCodeAt(state.pos);
-    if (marker === 0x5D /* ] */) {
-      level--;
-      if (level === 0) {
-        found = true;
-        break;
-      }
-    }
-
-    prevPos = state.pos;
-    state.md.inline.skipToken(state);
-    if (marker === 0x5B /* [ */) {
-      if (prevPos === state.pos - 1) {
-        // increase level if we find text `[`, which is not a part of any token
-        level++;
-      } else if (disableNested) {
-        state.pos = oldPos;
-        return -1;
-      }
-    }
-  }
-
-  if (found) {
-    labelEnd = state.pos;
-  }
-
-  // restore old state
-  state.pos = oldPos;
-
-  return labelEnd;
-};
-
-
-/***/ }),
-/* 276 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/**
- * class Ruler
- *
- * Helper class, used by [[MarkdownIt#core]], [[MarkdownIt#block]] and
- * [[MarkdownIt#inline]] to manage sequences of functions (rules):
- *
- * - keep rules in defined order
- * - assign the name to each rule
- * - enable/disable rules
- * - add/replace rules
- * - allow assign rules to additional named chains (in the same)
- * - cacheing lists of active rules
- *
- * You will not need use this class directly until write plugins. For simple
- * rules control use [[MarkdownIt.disable]], [[MarkdownIt.enable]] and
- * [[MarkdownIt.use]].
- **/
-
-
-
-/**
- * new Ruler()
- **/
-function Ruler() {
-  // List of added rules. Each element is:
-  //
-  // {
-  //   name: XXX,
-  //   enabled: Boolean,
-  //   fn: Function(),
-  //   alt: [ name2, name3 ]
-  // }
-  //
-  this.__rules__ = [];
-
-  // Cached rule chains.
-  //
-  // First level - chain name, '' for default.
-  // Second level - diginal anchor for fast filtering by charcodes.
-  //
-  this.__cache__ = null;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Helper methods, should not be used directly
-
-
-// Find rule index by name
-//
-Ruler.prototype.__find__ = function (name) {
-  for (var i = 0; i < this.__rules__.length; i++) {
-    if (this.__rules__[i].name === name) {
-      return i;
-    }
-  }
-  return -1;
-};
-
-
-// Build rules lookup cache
-//
-Ruler.prototype.__compile__ = function () {
-  var self = this;
-  var chains = [ '' ];
-
-  // collect unique names
-  self.__rules__.forEach(function (rule) {
-    if (!rule.enabled) { return; }
-
-    rule.alt.forEach(function (altName) {
-      if (chains.indexOf(altName) < 0) {
-        chains.push(altName);
-      }
-    });
-  });
-
-  self.__cache__ = {};
-
-  chains.forEach(function (chain) {
-    self.__cache__[chain] = [];
-    self.__rules__.forEach(function (rule) {
-      if (!rule.enabled) { return; }
-
-      if (chain && rule.alt.indexOf(chain) < 0) { return; }
-
-      self.__cache__[chain].push(rule.fn);
-    });
-  });
-};
-
-
-/**
- * Ruler.at(name, fn [, options])
- * - name (String): rule name to replace.
- * - fn (Function): new rule function.
- * - options (Object): new rule options (not mandatory).
- *
- * Replace rule by name with new function & options. Throws error if name not
- * found.
- *
- * ##### Options:
- *
- * - __alt__ - array with names of "alternate" chains.
- *
- * ##### Example
- *
- * Replace existing typorgapher replacement rule with new one:
- *
- * ```javascript
- * var md = require('markdown-it')();
- *
- * md.core.ruler.at('replacements', function replace(state) {
- *   //...
- * });
- * ```
- **/
-Ruler.prototype.at = function (name, fn, options) {
-  var index = this.__find__(name);
-  var opt = options || {};
-
-  if (index === -1) { throw new Error('Parser rule not found: ' + name); }
-
-  this.__rules__[index].fn = fn;
-  this.__rules__[index].alt = opt.alt || [];
-  this.__cache__ = null;
-};
-
-
-/**
- * Ruler.before(beforeName, ruleName, fn [, options])
- * - beforeName (String): new rule will be added before this one.
- * - ruleName (String): name of added rule.
- * - fn (Function): rule function.
- * - options (Object): rule options (not mandatory).
- *
- * Add new rule to chain before one with given name. See also
- * [[Ruler.after]], [[Ruler.push]].
- *
- * ##### Options:
- *
- * - __alt__ - array with names of "alternate" chains.
- *
- * ##### Example
- *
- * ```javascript
- * var md = require('markdown-it')();
- *
- * md.block.ruler.before('paragraph', 'my_rule', function replace(state) {
- *   //...
- * });
- * ```
- **/
-Ruler.prototype.before = function (beforeName, ruleName, fn, options) {
-  var index = this.__find__(beforeName);
-  var opt = options || {};
-
-  if (index === -1) { throw new Error('Parser rule not found: ' + beforeName); }
-
-  this.__rules__.splice(index, 0, {
-    name: ruleName,
-    enabled: true,
-    fn: fn,
-    alt: opt.alt || []
-  });
-
-  this.__cache__ = null;
-};
-
-
-/**
- * Ruler.after(afterName, ruleName, fn [, options])
- * - afterName (String): new rule will be added after this one.
- * - ruleName (String): name of added rule.
- * - fn (Function): rule function.
- * - options (Object): rule options (not mandatory).
- *
- * Add new rule to chain after one with given name. See also
- * [[Ruler.before]], [[Ruler.push]].
- *
- * ##### Options:
- *
- * - __alt__ - array with names of "alternate" chains.
- *
- * ##### Example
- *
- * ```javascript
- * var md = require('markdown-it')();
- *
- * md.inline.ruler.after('text', 'my_rule', function replace(state) {
- *   //...
- * });
- * ```
- **/
-Ruler.prototype.after = function (afterName, ruleName, fn, options) {
-  var index = this.__find__(afterName);
-  var opt = options || {};
-
-  if (index === -1) { throw new Error('Parser rule not found: ' + afterName); }
-
-  this.__rules__.splice(index + 1, 0, {
-    name: ruleName,
-    enabled: true,
-    fn: fn,
-    alt: opt.alt || []
-  });
-
-  this.__cache__ = null;
-};
-
-/**
- * Ruler.push(ruleName, fn [, options])
- * - ruleName (String): name of added rule.
- * - fn (Function): rule function.
- * - options (Object): rule options (not mandatory).
- *
- * Push new rule to the end of chain. See also
- * [[Ruler.before]], [[Ruler.after]].
- *
- * ##### Options:
- *
- * - __alt__ - array with names of "alternate" chains.
- *
- * ##### Example
- *
- * ```javascript
- * var md = require('markdown-it')();
- *
- * md.core.ruler.push('my_rule', function replace(state) {
- *   //...
- * });
- * ```
- **/
-Ruler.prototype.push = function (ruleName, fn, options) {
-  var opt = options || {};
-
-  this.__rules__.push({
-    name: ruleName,
-    enabled: true,
-    fn: fn,
-    alt: opt.alt || []
-  });
-
-  this.__cache__ = null;
-};
-
-
-/**
- * Ruler.enable(list [, ignoreInvalid]) -> Array
- * - list (String|Array): list of rule names to enable.
- * - ignoreInvalid (Boolean): set `true` to ignore errors when rule not found.
- *
- * Enable rules with given names. If any rule name not found - throw Error.
- * Errors can be disabled by second param.
- *
- * Returns list of found rule names (if no exception happened).
- *
- * See also [[Ruler.disable]], [[Ruler.enableOnly]].
- **/
-Ruler.prototype.enable = function (list, ignoreInvalid) {
-  if (!Array.isArray(list)) { list = [ list ]; }
-
-  var result = [];
-
-  // Search by name and enable
-  list.forEach(function (name) {
-    var idx = this.__find__(name);
-
-    if (idx < 0) {
-      if (ignoreInvalid) { return; }
-      throw new Error('Rules manager: invalid rule name ' + name);
-    }
-    this.__rules__[idx].enabled = true;
-    result.push(name);
-  }, this);
-
-  this.__cache__ = null;
-  return result;
-};
-
-
-/**
- * Ruler.enableOnly(list [, ignoreInvalid])
- * - list (String|Array): list of rule names to enable (whitelist).
- * - ignoreInvalid (Boolean): set `true` to ignore errors when rule not found.
- *
- * Enable rules with given names, and disable everything else. If any rule name
- * not found - throw Error. Errors can be disabled by second param.
- *
- * See also [[Ruler.disable]], [[Ruler.enable]].
- **/
-Ruler.prototype.enableOnly = function (list, ignoreInvalid) {
-  if (!Array.isArray(list)) { list = [ list ]; }
-
-  this.__rules__.forEach(function (rule) { rule.enabled = false; });
-
-  this.enable(list, ignoreInvalid);
-};
-
-
-/**
- * Ruler.disable(list [, ignoreInvalid]) -> Array
- * - list (String|Array): list of rule names to disable.
- * - ignoreInvalid (Boolean): set `true` to ignore errors when rule not found.
- *
- * Disable rules with given names. If any rule name not found - throw Error.
- * Errors can be disabled by second param.
- *
- * Returns list of found rule names (if no exception happened).
- *
- * See also [[Ruler.enable]], [[Ruler.enableOnly]].
- **/
-Ruler.prototype.disable = function (list, ignoreInvalid) {
-  if (!Array.isArray(list)) { list = [ list ]; }
-
-  var result = [];
-
-  // Search by name and disable
-  list.forEach(function (name) {
-    var idx = this.__find__(name);
-
-    if (idx < 0) {
-      if (ignoreInvalid) { return; }
-      throw new Error('Rules manager: invalid rule name ' + name);
-    }
-    this.__rules__[idx].enabled = false;
-    result.push(name);
-  }, this);
-
-  this.__cache__ = null;
-  return result;
-};
-
-
-/**
- * Ruler.getRules(chainName) -> Array
- *
- * Return array of active functions (rules) for given chain name. It analyzes
- * rules configuration, compiles caches if not exists and returns result.
- *
- * Default chain name is `''` (empty string). It can't be skipped. That's
- * done intentionally, to keep signature monomorphic for high speed.
- **/
-Ruler.prototype.getRules = function (chainName) {
-  if (this.__cache__ === null) {
-    this.__compile__();
-  }
-
-  // Chain can be empty, if rules disabled. But we still have to return Array.
-  return this.__cache__[chainName] || [];
-};
-
-module.exports = Ruler;
-
-
-/***/ }),
-/* 277 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Token class
-
-
-
-
-/**
- * class Token
- **/
-
-/**
- * new Token(type, tag, nesting)
- *
- * Create new token and fill passed properties.
- **/
-function Token(type, tag, nesting) {
-  /**
-   * Token#type -> String
-   *
-   * Type of the token (string, e.g. "paragraph_open")
-   **/
-  this.type     = type;
-
-  /**
-   * Token#tag -> String
-   *
-   * html tag name, e.g. "p"
-   **/
-  this.tag      = tag;
-
-  /**
-   * Token#attrs -> Array
-   *
-   * Html attributes. Format: `[ [ name1, value1 ], [ name2, value2 ] ]`
-   **/
-  this.attrs    = null;
-
-  /**
-   * Token#map -> Array
-   *
-   * Source map info. Format: `[ line_begin, line_end ]`
-   **/
-  this.map      = null;
-
-  /**
-   * Token#nesting -> Number
-   *
-   * Level change (number in {-1, 0, 1} set), where:
-   *
-   * -  `1` means the tag is opening
-   * -  `0` means the tag is self-closing
-   * - `-1` means the tag is closing
-   **/
-  this.nesting  = nesting;
-
-  /**
-   * Token#level -> Number
-   *
-   * nesting level, the same as `state.level`
-   **/
-  this.level    = 0;
-
-  /**
-   * Token#children -> Array
-   *
-   * An array of child nodes (inline and img tokens)
-   **/
-  this.children = null;
-
-  /**
-   * Token#content -> String
-   *
-   * In a case of self-closing tag (code, html, fence, etc.),
-   * it has contents of this tag.
-   **/
-  this.content  = '';
-
-  /**
-   * Token#markup -> String
-   *
-   * '*' or '_' for emphasis, fence string for fence, etc.
-   **/
-  this.markup   = '';
-
-  /**
-   * Token#info -> String
-   *
-   * fence infostring
-   **/
-  this.info     = '';
-
-  /**
-   * Token#meta -> Object
-   *
-   * A place for plugins to store an arbitrary data
-   **/
-  this.meta     = null;
-
-  /**
-   * Token#block -> Boolean
-   *
-   * True for block-level tokens, false for inline tokens.
-   * Used in renderer to calculate line breaks
-   **/
-  this.block    = false;
-
-  /**
-   * Token#hidden -> Boolean
-   *
-   * If it's true, ignore this element when rendering. Used for tight lists
-   * to hide paragraphs.
-   **/
-  this.hidden   = false;
-}
-
-
-/**
- * Token.attrIndex(name) -> Number
- *
- * Search attribute index by name.
- **/
-Token.prototype.attrIndex = function attrIndex(name) {
-  var attrs, i, len;
-
-  if (!this.attrs) { return -1; }
-
-  attrs = this.attrs;
-
-  for (i = 0, len = attrs.length; i < len; i++) {
-    if (attrs[i][0] === name) { return i; }
-  }
-  return -1;
-};
-
-
-/**
- * Token.attrPush(attrData)
- *
- * Add `[ name, value ]` attribute to list. Init attrs if necessary
- **/
-Token.prototype.attrPush = function attrPush(attrData) {
-  if (this.attrs) {
-    this.attrs.push(attrData);
-  } else {
-    this.attrs = [ attrData ];
-  }
-};
-
-
-/**
- * Token.attrSet(name, value)
- *
- * Set `name` attribute to `value`. Override old value if exists.
- **/
-Token.prototype.attrSet = function attrSet(name, value) {
-  var idx = this.attrIndex(name),
-      attrData = [ name, value ];
-
-  if (idx < 0) {
-    this.attrPush(attrData);
-  } else {
-    this.attrs[idx] = attrData;
-  }
-};
-
-
-/**
- * Token.attrGet(name)
- *
- * Get the value of attribute `name`, or null if it does not exist.
- **/
-Token.prototype.attrGet = function attrGet(name) {
-  var idx = this.attrIndex(name), value = null;
-  if (idx >= 0) {
-    value = this.attrs[idx][1];
-  }
-  return value;
-};
-
-
-/**
- * Token.attrJoin(name, value)
- *
- * Join value to existing attribute via space. Or create new attribute if not
- * exists. Useful to operate with token classes.
- **/
-Token.prototype.attrJoin = function attrJoin(name, value) {
-  var idx = this.attrIndex(name);
-
-  if (idx < 0) {
-    this.attrPush([ name, value ]);
-  } else {
-    this.attrs[idx][1] = this.attrs[idx][1] + ' ' + value;
-  }
-};
-
-
-module.exports = Token;
-
-
-/***/ }),
-/* 278 */
-/***/ (function(module, exports) {
-
-var toString = {}.toString;
-
-module.exports = function (it) {
-  return toString.call(it).slice(8, -1);
-};
-
-
-/***/ }),
-/* 279 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var LIBRARY = __webpack_require__(308);
-var $export = __webpack_require__(280);
-var redefine = __webpack_require__(313);
-var hide = __webpack_require__(256);
-var has = __webpack_require__(261);
-var Iterators = __webpack_require__(258);
-var $iterCreate = __webpack_require__(314);
-var setToStringTag = __webpack_require__(287);
-var getPrototypeOf = __webpack_require__(322);
-var ITERATOR = __webpack_require__(254)('iterator');
-var BUGGY = !([].keys && 'next' in [].keys()); // Safari has buggy iterators w/o `next`
-var FF_ITERATOR = '@@iterator';
-var KEYS = 'keys';
-var VALUES = 'values';
-
-var returnThis = function () { return this; };
-
-module.exports = function (Base, NAME, Constructor, next, DEFAULT, IS_SET, FORCED) {
-  $iterCreate(Constructor, NAME, next);
-  var getMethod = function (kind) {
-    if (!BUGGY && kind in proto) return proto[kind];
-    switch (kind) {
-      case KEYS: return function keys() { return new Constructor(this, kind); };
-      case VALUES: return function values() { return new Constructor(this, kind); };
-    } return function entries() { return new Constructor(this, kind); };
-  };
-  var TAG = NAME + ' Iterator';
-  var DEF_VALUES = DEFAULT == VALUES;
-  var VALUES_BUG = false;
-  var proto = Base.prototype;
-  var $native = proto[ITERATOR] || proto[FF_ITERATOR] || DEFAULT && proto[DEFAULT];
-  var $default = $native || getMethod(DEFAULT);
-  var $entries = DEFAULT ? !DEF_VALUES ? $default : getMethod('entries') : undefined;
-  var $anyNative = NAME == 'Array' ? proto.entries || $native : $native;
-  var methods, key, IteratorPrototype;
-  // Fix native
-  if ($anyNative) {
-    IteratorPrototype = getPrototypeOf($anyNative.call(new Base()));
-    if (IteratorPrototype !== Object.prototype && IteratorPrototype.next) {
-      // Set @@toStringTag to native iterators
-      setToStringTag(IteratorPrototype, TAG, true);
-      // fix for some old engines
-      if (!LIBRARY && !has(IteratorPrototype, ITERATOR)) hide(IteratorPrototype, ITERATOR, returnThis);
-    }
-  }
-  // fix Array#{values, @@iterator}.name in V8 / FF
-  if (DEF_VALUES && $native && $native.name !== VALUES) {
-    VALUES_BUG = true;
-    $default = function values() { return $native.call(this); };
-  }
-  // Define iterator
-  if ((!LIBRARY || FORCED) && (BUGGY || VALUES_BUG || !proto[ITERATOR])) {
-    hide(proto, ITERATOR, $default);
-  }
-  // Plug for library
-  Iterators[NAME] = $default;
-  Iterators[TAG] = returnThis;
-  if (DEFAULT) {
-    methods = {
-      values: DEF_VALUES ? $default : getMethod(VALUES),
-      keys: IS_SET ? $default : getMethod(KEYS),
-      entries: $entries
-    };
-    if (FORCED) for (key in methods) {
-      if (!(key in proto)) redefine(proto, key, methods[key]);
-    } else $export($export.P + $export.F * (BUGGY || VALUES_BUG), NAME, methods);
-  }
-  return methods;
-};
-
-
-/***/ }),
-/* 280 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var global = __webpack_require__(253);
-var core = __webpack_require__(255);
-var ctx = __webpack_require__(309);
-var hide = __webpack_require__(256);
-var PROTOTYPE = 'prototype';
-
-var $export = function (type, name, source) {
-  var IS_FORCED = type & $export.F;
-  var IS_GLOBAL = type & $export.G;
-  var IS_STATIC = type & $export.S;
-  var IS_PROTO = type & $export.P;
-  var IS_BIND = type & $export.B;
-  var IS_WRAP = type & $export.W;
-  var exports = IS_GLOBAL ? core : core[name] || (core[name] = {});
-  var expProto = exports[PROTOTYPE];
-  var target = IS_GLOBAL ? global : IS_STATIC ? global[name] : (global[name] || {})[PROTOTYPE];
-  var key, own, out;
-  if (IS_GLOBAL) source = name;
-  for (key in source) {
-    // contains in native
-    own = !IS_FORCED && target && target[key] !== undefined;
-    if (own && key in exports) continue;
-    // export native or passed
-    out = own ? target[key] : source[key];
-    // prevent global pollution for namespaces
-    exports[key] = IS_GLOBAL && typeof target[key] != 'function' ? source[key]
-    // bind timers to global for call from export context
-    : IS_BIND && own ? ctx(out, global)
-    // wrap global constructors for prevent change them in library
-    : IS_WRAP && target[key] == out ? (function (C) {
-      var F = function (a, b, c) {
-        if (this instanceof C) {
-          switch (arguments.length) {
-            case 0: return new C();
-            case 1: return new C(a);
-            case 2: return new C(a, b);
-          } return new C(a, b, c);
-        } return C.apply(this, arguments);
-      };
-      F[PROTOTYPE] = C[PROTOTYPE];
-      return F;
-    // make static versions for prototype methods
-    })(out) : IS_PROTO && typeof out == 'function' ? ctx(Function.call, out) : out;
-    // export proto methods to core.%CONSTRUCTOR%.methods.%NAME%
-    if (IS_PROTO) {
-      (exports.virtual || (exports.virtual = {}))[key] = out;
-      // export proto methods to core.%CONSTRUCTOR%.prototype.%NAME%
-      if (type & $export.R && expProto && !expProto[key]) hide(expProto, key, out);
-    }
-  }
-};
-// type bitmap
-$export.F = 1;   // forced
-$export.G = 2;   // global
-$export.S = 4;   // static
-$export.P = 8;   // proto
-$export.B = 16;  // bind
-$export.W = 32;  // wrap
-$export.U = 64;  // safe
-$export.R = 128; // real proto method for `library`
-module.exports = $export;
-
-
-/***/ }),
-/* 281 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var isObject = __webpack_require__(270);
-var document = __webpack_require__(253).document;
-// typeof document.createElement is 'object' in old IE
-var is = isObject(document) && isObject(document.createElement);
-module.exports = function (it) {
-  return is ? document.createElement(it) : {};
-};
-
-
-/***/ }),
-/* 282 */
-/***/ (function(module, exports) {
-
-module.exports = function (bitmap, value) {
-  return {
-    enumerable: !(bitmap & 1),
-    configurable: !(bitmap & 2),
-    writable: !(bitmap & 4),
-    value: value
-  };
-};
-
-
-/***/ }),
-/* 283 */
-/***/ (function(module, exports, __webpack_require__) {
-
-// 19.1.2.14 / 15.2.3.14 Object.keys(O)
-var $keys = __webpack_require__(317);
-var enumBugKeys = __webpack_require__(286);
-
-module.exports = Object.keys || function keys(O) {
-  return $keys(O, enumBugKeys);
-};
-
-
-/***/ }),
-/* 284 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var global = __webpack_require__(253);
-var SHARED = '__core-js_shared__';
-var store = global[SHARED] || (global[SHARED] = {});
-module.exports = function (key) {
-  return store[key] || (store[key] = {});
-};
-
-
-/***/ }),
-/* 285 */
-/***/ (function(module, exports) {
-
-var id = 0;
-var px = Math.random();
-module.exports = function (key) {
-  return 'Symbol('.concat(key === undefined ? '' : key, ')_', (++id + px).toString(36));
-};
-
-
-/***/ }),
-/* 286 */
-/***/ (function(module, exports) {
-
-// IE 8- don't enum bug keys
-module.exports = (
-  'constructor,hasOwnProperty,isPrototypeOf,propertyIsEnumerable,toLocaleString,toString,valueOf'
-).split(',');
-
-
-/***/ }),
-/* 287 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var def = __webpack_require__(269).f;
-var has = __webpack_require__(261);
-var TAG = __webpack_require__(254)('toStringTag');
-
-module.exports = function (it, tag, stat) {
-  if (it && !has(it = stat ? it : it.prototype, TAG)) def(it, TAG, { configurable: true, value: tag });
-};
-
-
-/***/ }),
-/* 288 */
-/***/ (function(module, exports, __webpack_require__) {
-
-// 7.1.13 ToObject(argument)
-var defined = __webpack_require__(268);
-module.exports = function (it) {
-  return Object(defined(it));
-};
-
-
-/***/ }),
-/* 289 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// HTML5 entities map: { name -> utf16string }
-//
-
-
-/*eslint quotes:0*/
-module.exports = __webpack_require__(334);
-
-
-/***/ }),
-/* 290 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-
-module.exports.encode = __webpack_require__(335);
-module.exports.decode = __webpack_require__(336);
-module.exports.format = __webpack_require__(337);
-module.exports.parse  = __webpack_require__(338);
-
-
-/***/ }),
-/* 291 */
-/***/ (function(module, exports) {
-
-module.exports=/[\0-\uD7FF\uE000-\uFFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/
-
-/***/ }),
-/* 292 */
-/***/ (function(module, exports) {
-
-module.exports=/[\0-\x1F\x7F-\x9F]/
-
-/***/ }),
-/* 293 */
-/***/ (function(module, exports) {
-
-module.exports=/[ \xA0\u1680\u2000-\u200A\u202F\u205F\u3000]/
-
-/***/ }),
-/* 294 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Regexps to match html elements
-
-
-
-var attr_name     = '[a-zA-Z_:][a-zA-Z0-9:._-]*';
-
-var unquoted      = '[^"\'=<>`\\x00-\\x20]+';
-var single_quoted = "'[^']*'";
-var double_quoted = '"[^"]*"';
-
-var attr_value  = '(?:' + unquoted + '|' + single_quoted + '|' + double_quoted + ')';
-
-var attribute   = '(?:\\s+' + attr_name + '(?:\\s*=\\s*' + attr_value + ')?)';
-
-var open_tag    = '<[A-Za-z][A-Za-z0-9\\-]*' + attribute + '*\\s*\\/?>';
-
-var close_tag   = '<\\/[A-Za-z][A-Za-z0-9\\-]*\\s*>';
-var comment     = '<!---->|<!--(?:-?[^>-])(?:-?[^-])*-->';
-var processing  = '<[?].*?[?]>';
-var declaration = '<![A-Z]+\\s+[^>]*>';
-var cdata       = '<!\\[CDATA\\[[\\s\\S]*?\\]\\]>';
-
-var HTML_TAG_RE = new RegExp('^(?:' + open_tag + '|' + close_tag + '|' + comment +
-                        '|' + processing + '|' + declaration + '|' + cdata + ')');
-var HTML_OPEN_CLOSE_TAG_RE = new RegExp('^(?:' + open_tag + '|' + close_tag + ')');
-
-module.exports.HTML_TAG_RE = HTML_TAG_RE;
-module.exports.HTML_OPEN_CLOSE_TAG_RE = HTML_OPEN_CLOSE_TAG_RE;
-
-
-/***/ }),
-/* 295 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// ~~strike through~~
-//
-
-
-
-// Insert each marker as a separate text token, and add it to delimiter list
-//
-module.exports.tokenize = function strikethrough(state, silent) {
-  var i, scanned, token, len, ch,
-      start = state.pos,
-      marker = state.src.charCodeAt(start);
-
-  if (silent) { return false; }
-
-  if (marker !== 0x7E/* ~ */) { return false; }
-
-  scanned = state.scanDelims(state.pos, true);
-  len = scanned.length;
-  ch = String.fromCharCode(marker);
-
-  if (len < 2) { return false; }
-
-  if (len % 2) {
-    token         = state.push('text', '', 0);
-    token.content = ch;
-    len--;
-  }
-
-  for (i = 0; i < len; i += 2) {
-    token         = state.push('text', '', 0);
-    token.content = ch + ch;
-
-    state.delimiters.push({
-      marker: marker,
-      jump:   i,
-      token:  state.tokens.length - 1,
-      level:  state.level,
-      end:    -1,
-      open:   scanned.can_open,
-      close:  scanned.can_close
-    });
-  }
-
-  state.pos += scanned.length;
-
-  return true;
-};
-
-
-// Walk through delimiter list and replace text tokens with tags
-//
-module.exports.postProcess = function strikethrough(state) {
-  var i, j,
-      startDelim,
-      endDelim,
-      token,
-      loneMarkers = [],
-      delimiters = state.delimiters,
-      max = state.delimiters.length;
-
-  for (i = 0; i < max; i++) {
-    startDelim = delimiters[i];
-
-    if (startDelim.marker !== 0x7E/* ~ */) {
-      continue;
-    }
-
-    if (startDelim.end === -1) {
-      continue;
-    }
-
-    endDelim = delimiters[startDelim.end];
-
-    token         = state.tokens[startDelim.token];
-    token.type    = 's_open';
-    token.tag     = 's';
-    token.nesting = 1;
-    token.markup  = '~~';
-    token.content = '';
-
-    token         = state.tokens[endDelim.token];
-    token.type    = 's_close';
-    token.tag     = 's';
-    token.nesting = -1;
-    token.markup  = '~~';
-    token.content = '';
-
-    if (state.tokens[endDelim.token - 1].type === 'text' &&
-        state.tokens[endDelim.token - 1].content === '~') {
-
-      loneMarkers.push(endDelim.token - 1);
-    }
-  }
-
-  // If a marker sequence has an odd number of characters, it's splitted
-  // like this: `~~~~~` -> `~` + `~~` + `~~`, leaving one marker at the
-  // start of the sequence.
-  //
-  // So, we have to move all those markers after subsequent s_close tags.
-  //
-  while (loneMarkers.length) {
-    i = loneMarkers.pop();
-    j = i + 1;
-
-    while (j < state.tokens.length && state.tokens[j].type === 's_close') {
-      j++;
-    }
-
-    j--;
-
-    if (i !== j) {
-      token = state.tokens[j];
-      state.tokens[j] = state.tokens[i];
-      state.tokens[i] = token;
-    }
-  }
-};
-
-
-/***/ }),
-/* 296 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Process *this* and _that_
-//
-
-
-
-// Insert each marker as a separate text token, and add it to delimiter list
-//
-module.exports.tokenize = function emphasis(state, silent) {
-  var i, scanned, token,
-      start = state.pos,
-      marker = state.src.charCodeAt(start);
-
-  if (silent) { return false; }
-
-  if (marker !== 0x5F /* _ */ && marker !== 0x2A /* * */) { return false; }
-
-  scanned = state.scanDelims(state.pos, marker === 0x2A);
-
-  for (i = 0; i < scanned.length; i++) {
-    token         = state.push('text', '', 0);
-    token.content = String.fromCharCode(marker);
-
-    state.delimiters.push({
-      // Char code of the starting marker (number).
-      //
-      marker: marker,
-
-      // An amount of characters before this one that's equivalent to
-      // current one. In plain English: if this delimiter does not open
-      // an emphasis, neither do previous `jump` characters.
-      //
-      // Used to skip sequences like "*****" in one step, for 1st asterisk
-      // value will be 0, for 2nd it's 1 and so on.
-      //
-      jump:   i,
-
-      // A position of the token this delimiter corresponds to.
-      //
-      token:  state.tokens.length - 1,
-
-      // Token level.
-      //
-      level:  state.level,
-
-      // If this delimiter is matched as a valid opener, `end` will be
-      // equal to its position, otherwise it's `-1`.
-      //
-      end:    -1,
-
-      // Boolean flags that determine if this delimiter could open or close
-      // an emphasis.
-      //
-      open:   scanned.can_open,
-      close:  scanned.can_close
-    });
-  }
-
-  state.pos += scanned.length;
-
-  return true;
-};
-
-
-// Walk through delimiter list and replace text tokens with tags
-//
-module.exports.postProcess = function emphasis(state) {
-  var i,
-      startDelim,
-      endDelim,
-      token,
-      ch,
-      isStrong,
-      delimiters = state.delimiters,
-      max = state.delimiters.length;
-
-  for (i = 0; i < max; i++) {
-    startDelim = delimiters[i];
-
-    if (startDelim.marker !== 0x5F/* _ */ && startDelim.marker !== 0x2A/* * */) {
-      continue;
-    }
-
-    // Process only opening markers
-    if (startDelim.end === -1) {
-      continue;
-    }
-
-    endDelim = delimiters[startDelim.end];
-
-    // If the next delimiter has the same marker and is adjacent to this one,
-    // merge those into one strong delimiter.
-    //
-    // `<em><em>whatever</em></em>` -> `<strong>whatever</strong>`
-    //
-    isStrong = i + 1 < max &&
-               delimiters[i + 1].end === startDelim.end - 1 &&
-               delimiters[i + 1].token === startDelim.token + 1 &&
-               delimiters[startDelim.end - 1].token === endDelim.token - 1 &&
-               delimiters[i + 1].marker === startDelim.marker;
-
-    ch = String.fromCharCode(startDelim.marker);
-
-    token         = state.tokens[startDelim.token];
-    token.type    = isStrong ? 'strong_open' : 'em_open';
-    token.tag     = isStrong ? 'strong' : 'em';
-    token.nesting = 1;
-    token.markup  = isStrong ? ch + ch : ch;
-    token.content = '';
-
-    token         = state.tokens[endDelim.token];
-    token.type    = isStrong ? 'strong_close' : 'em_close';
-    token.tag     = isStrong ? 'strong' : 'em';
-    token.nesting = -1;
-    token.markup  = isStrong ? ch + ch : ch;
-    token.content = '';
-
-    if (isStrong) {
-      state.tokens[delimiters[i + 1].token].content = '';
-      state.tokens[delimiters[startDelim.end - 1].token].content = '';
-      i++;
-    }
-  }
-};
-
+webpackContext.id = 296;
 
 /***/ }),
 /* 297 */
-/***/ (function(module, exports) {
+/***/ (function(module, exports, __webpack_require__) {
 
-/**
- * This is a module for storing settings passed into KaTeX. It correctly handles
- * default settings.
- */
-
-/**
- * Helper function for getting a default value if the value is undefined
- */
-function get(option, defaultValue) {
-    return option === undefined ? defaultValue : option;
-}
-
-/**
- * The main Settings object
- *
- * The current options stored are:
- *  - displayMode: Whether the expression should be typeset by default in
- *                 textstyle or displaystyle (default false)
- */
-function Settings(options) {
-    // allow null options
-    options = options || {};
-    this.displayMode = get(options.displayMode, false);
-    this.throwOnError = get(options.throwOnError, true);
-    this.errorColor = get(options.errorColor, "#cc0000");
-}
-
-module.exports = Settings;
-
+module.exports = { "default": __webpack_require__(298), __esModule: true };
 
 /***/ }),
 /* 298 */
 /***/ (function(module, exports, __webpack_require__) {
 
-/**
- * These objects store the data about the DOM nodes we create, as well as some
- * extra data. They can then be transformed into real DOM nodes with the
- * `toNode` function or HTML markup using `toMarkup`. They are useful for both
- * storing extra properties on the nodes, as well as providing a way to easily
- * work with the DOM.
- *
- * Similar functions for working with MathML nodes exist in mathMLTree.js.
- */
-
-var utils = __webpack_require__(251);
-
-/**
- * Create an HTML className based on a list of classes. In addition to joining
- * with spaces, we also remove null or empty classes.
- */
-var createClass = function(classes) {
-    classes = classes.slice();
-    for (var i = classes.length - 1; i >= 0; i--) {
-        if (!classes[i]) {
-            classes.splice(i, 1);
-        }
-    }
-
-    return classes.join(" ");
-};
-
-/**
- * This node represents a span node, with a className, a list of children, and
- * an inline style. It also contains information about its height, depth, and
- * maxFontSize.
- */
-function span(classes, children, height, depth, maxFontSize, style) {
-    this.classes = classes || [];
-    this.children = children || [];
-    this.height = height || 0;
-    this.depth = depth || 0;
-    this.maxFontSize = maxFontSize || 0;
-    this.style = style || {};
-    this.attributes = {};
-}
-
-/**
- * Sets an arbitrary attribute on the span. Warning: use this wisely. Not all
- * browsers support attributes the same, and having too many custom attributes
- * is probably bad.
- */
-span.prototype.setAttribute = function(attribute, value) {
-    this.attributes[attribute] = value;
-};
-
-/**
- * Convert the span into an HTML node
- */
-span.prototype.toNode = function() {
-    var span = document.createElement("span");
-
-    // Apply the class
-    span.className = createClass(this.classes);
-
-    // Apply inline styles
-    for (var style in this.style) {
-        if (Object.prototype.hasOwnProperty.call(this.style, style)) {
-            span.style[style] = this.style[style];
-        }
-    }
-
-    // Apply attributes
-    for (var attr in this.attributes) {
-        if (Object.prototype.hasOwnProperty.call(this.attributes, attr)) {
-            span.setAttribute(attr, this.attributes[attr]);
-        }
-    }
-
-    // Append the children, also as HTML nodes
-    for (var i = 0; i < this.children.length; i++) {
-        span.appendChild(this.children[i].toNode());
-    }
-
-    return span;
-};
-
-/**
- * Convert the span into an HTML markup string
- */
-span.prototype.toMarkup = function() {
-    var markup = "<span";
-
-    // Add the class
-    if (this.classes.length) {
-        markup += " class=\"";
-        markup += utils.escape(createClass(this.classes));
-        markup += "\"";
-    }
-
-    var styles = "";
-
-    // Add the styles, after hyphenation
-    for (var style in this.style) {
-        if (this.style.hasOwnProperty(style)) {
-            styles += utils.hyphenate(style) + ":" + this.style[style] + ";";
-        }
-    }
-
-    if (styles) {
-        markup += " style=\"" + utils.escape(styles) + "\"";
-    }
-
-    // Add the attributes
-    for (var attr in this.attributes) {
-        if (Object.prototype.hasOwnProperty.call(this.attributes, attr)) {
-            markup += " " + attr + "=\"";
-            markup += utils.escape(this.attributes[attr]);
-            markup += "\"";
-        }
-    }
-
-    markup += ">";
-
-    // Add the markup of the children, also as markup
-    for (var i = 0; i < this.children.length; i++) {
-        markup += this.children[i].toMarkup();
-    }
-
-    markup += "</span>";
-
-    return markup;
-};
-
-/**
- * This node represents a document fragment, which contains elements, but when
- * placed into the DOM doesn't have any representation itself. Thus, it only
- * contains children and doesn't have any HTML properties. It also keeps track
- * of a height, depth, and maxFontSize.
- */
-function documentFragment(children, height, depth, maxFontSize) {
-    this.children = children || [];
-    this.height = height || 0;
-    this.depth = depth || 0;
-    this.maxFontSize = maxFontSize || 0;
-}
-
-/**
- * Convert the fragment into a node
- */
-documentFragment.prototype.toNode = function() {
-    // Create a fragment
-    var frag = document.createDocumentFragment();
-
-    // Append the children
-    for (var i = 0; i < this.children.length; i++) {
-        frag.appendChild(this.children[i].toNode());
-    }
-
-    return frag;
-};
-
-/**
- * Convert the fragment into HTML markup
- */
-documentFragment.prototype.toMarkup = function() {
-    var markup = "";
-
-    // Simply concatenate the markup for the children together
-    for (var i = 0; i < this.children.length; i++) {
-        markup += this.children[i].toMarkup();
-    }
-
-    return markup;
-};
-
-/**
- * A symbol node contains information about a single symbol. It either renders
- * to a single text node, or a span with a single text node in it, depending on
- * whether it has CSS classes, styles, or needs italic correction.
- */
-function symbolNode(value, height, depth, italic, skew, classes, style) {
-    this.value = value || "";
-    this.height = height || 0;
-    this.depth = depth || 0;
-    this.italic = italic || 0;
-    this.skew = skew || 0;
-    this.classes = classes || [];
-    this.style = style || {};
-    this.maxFontSize = 0;
-}
-
-/**
- * Creates a text node or span from a symbol node. Note that a span is only
- * created if it is needed.
- */
-symbolNode.prototype.toNode = function() {
-    var node = document.createTextNode(this.value);
-    var span = null;
-
-    if (this.italic > 0) {
-        span = document.createElement("span");
-        span.style.marginRight = this.italic + "em";
-    }
-
-    if (this.classes.length > 0) {
-        span = span || document.createElement("span");
-        span.className = createClass(this.classes);
-    }
-
-    for (var style in this.style) {
-        if (this.style.hasOwnProperty(style)) {
-            span = span || document.createElement("span");
-            span.style[style] = this.style[style];
-        }
-    }
-
-    if (span) {
-        span.appendChild(node);
-        return span;
-    } else {
-        return node;
-    }
-};
-
-/**
- * Creates markup for a symbol node.
- */
-symbolNode.prototype.toMarkup = function() {
-    // TODO(alpert): More duplication than I'd like from
-    // span.prototype.toMarkup and symbolNode.prototype.toNode...
-    var needsSpan = false;
-
-    var markup = "<span";
-
-    if (this.classes.length) {
-        needsSpan = true;
-        markup += " class=\"";
-        markup += utils.escape(createClass(this.classes));
-        markup += "\"";
-    }
-
-    var styles = "";
-
-    if (this.italic > 0) {
-        styles += "margin-right:" + this.italic + "em;";
-    }
-    for (var style in this.style) {
-        if (this.style.hasOwnProperty(style)) {
-            styles += utils.hyphenate(style) + ":" + this.style[style] + ";";
-        }
-    }
-
-    if (styles) {
-        needsSpan = true;
-        markup += " style=\"" + utils.escape(styles) + "\"";
-    }
-
-    var escaped = utils.escape(this.value);
-    if (needsSpan) {
-        markup += ">";
-        markup += escaped;
-        markup += "</span>";
-        return markup;
-    } else {
-        return escaped;
-    }
-};
-
-module.exports = {
-    span: span,
-    documentFragment: documentFragment,
-    symbolNode: symbolNode,
-};
+__webpack_require__(299);
+__webpack_require__(319);
+module.exports = __webpack_require__(321);
 
 
 /***/ }),
 /* 299 */
-/***/ (function(module, exports) {
-
-/**
- * The resulting parse tree nodes of the parse tree.
- */
-function ParseNode(type, value, mode) {
-    this.type = type;
-    this.value = value;
-    this.mode = mode;
-}
-
-module.exports = {
-    ParseNode: ParseNode,
-};
-
-
-
-/***/ }),
-/* 300 */
 /***/ (function(module, exports, __webpack_require__) {
 
-/**
- * vue-markdown v2.2.4
- * https://github.com/miaolz123/vue-markdown
- * MIT License
- */
-
-(function webpackUniversalModuleDefinition(root, factory) {
-	if(true)
-		module.exports = factory(__webpack_require__(301), __webpack_require__(328), __webpack_require__(332), __webpack_require__(384), __webpack_require__(390), __webpack_require__(391), __webpack_require__(392), __webpack_require__(393), __webpack_require__(394), __webpack_require__(395), __webpack_require__(396), __webpack_require__(397), __webpack_require__(410), __webpack_require__(425));
-	else if(typeof define === 'function' && define.amd)
-		define(["babel-runtime/core-js/get-iterator", "babel-runtime/core-js/object/keys", "markdown-it", "markdown-it-emoji", "markdown-it-sub", "markdown-it-sup", "markdown-it-footnote", "markdown-it-deflist", "markdown-it-abbr", "markdown-it-ins", "markdown-it-mark", "markdown-it-toc-and-anchor", "markdown-it-katex", "markdown-it-task-lists"], factory);
-	else if(typeof exports === 'object')
-		exports["VueMarkdown"] = factory(require("babel-runtime/core-js/get-iterator"), require("babel-runtime/core-js/object/keys"), require("markdown-it"), require("markdown-it-emoji"), require("markdown-it-sub"), require("markdown-it-sup"), require("markdown-it-footnote"), require("markdown-it-deflist"), require("markdown-it-abbr"), require("markdown-it-ins"), require("markdown-it-mark"), require("markdown-it-toc-and-anchor"), require("markdown-it-katex"), require("markdown-it-task-lists"));
-	else
-		root["VueMarkdown"] = factory(root["babel-runtime/core-js/get-iterator"], root["babel-runtime/core-js/object/keys"], root["markdown-it"], root["markdown-it-emoji"], root["markdown-it-sub"], root["markdown-it-sup"], root["markdown-it-footnote"], root["markdown-it-deflist"], root["markdown-it-abbr"], root["markdown-it-ins"], root["markdown-it-mark"], root["markdown-it-toc-and-anchor"], root["markdown-it-katex"], root["markdown-it-task-lists"]);
-})(this, function(__WEBPACK_EXTERNAL_MODULE_1__, __WEBPACK_EXTERNAL_MODULE_2__, __WEBPACK_EXTERNAL_MODULE_3__, __WEBPACK_EXTERNAL_MODULE_4__, __WEBPACK_EXTERNAL_MODULE_5__, __WEBPACK_EXTERNAL_MODULE_6__, __WEBPACK_EXTERNAL_MODULE_7__, __WEBPACK_EXTERNAL_MODULE_8__, __WEBPACK_EXTERNAL_MODULE_9__, __WEBPACK_EXTERNAL_MODULE_10__, __WEBPACK_EXTERNAL_MODULE_11__, __WEBPACK_EXTERNAL_MODULE_12__, __WEBPACK_EXTERNAL_MODULE_13__, __WEBPACK_EXTERNAL_MODULE_14__) {
-return /******/ (function(modules) { // webpackBootstrap
-/******/ 	// The module cache
-/******/ 	var installedModules = {};
-
-/******/ 	// The require function
-/******/ 	function __webpack_require__(moduleId) {
-
-/******/ 		// Check if module is in cache
-/******/ 		if(installedModules[moduleId])
-/******/ 			return installedModules[moduleId].exports;
-
-/******/ 		// Create a new module (and put it into the cache)
-/******/ 		var module = installedModules[moduleId] = {
-/******/ 			exports: {},
-/******/ 			id: moduleId,
-/******/ 			loaded: false
-/******/ 		};
-
-/******/ 		// Execute the module function
-/******/ 		modules[moduleId].call(module.exports, module, module.exports, __webpack_require__);
-
-/******/ 		// Flag the module as loaded
-/******/ 		module.loaded = true;
-
-/******/ 		// Return the exports of the module
-/******/ 		return module.exports;
-/******/ 	}
-
-
-/******/ 	// expose the modules object (__webpack_modules__)
-/******/ 	__webpack_require__.m = modules;
-
-/******/ 	// expose the module cache
-/******/ 	__webpack_require__.c = installedModules;
-
-/******/ 	// __webpack_public_path__
-/******/ 	__webpack_require__.p = "";
-
-/******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(0);
-/******/ })
-/************************************************************************/
-/******/ ([
-/* 0 */
-/***/ (function(module, exports, __webpack_require__) {
-
-	'use strict';
-
-	Object.defineProperty(exports, "__esModule", {
-	  value: true
-	});
-
-	var _getIterator2 = __webpack_require__(1);
-
-	var _getIterator3 = _interopRequireDefault(_getIterator2);
-
-	var _keys = __webpack_require__(2);
-
-	var _keys2 = _interopRequireDefault(_keys);
-
-	var _markdownIt = __webpack_require__(3);
-
-	var _markdownIt2 = _interopRequireDefault(_markdownIt);
-
-	var _markdownItEmoji = __webpack_require__(4);
-
-	var _markdownItEmoji2 = _interopRequireDefault(_markdownItEmoji);
-
-	var _markdownItSub = __webpack_require__(5);
-
-	var _markdownItSub2 = _interopRequireDefault(_markdownItSub);
-
-	var _markdownItSup = __webpack_require__(6);
-
-	var _markdownItSup2 = _interopRequireDefault(_markdownItSup);
-
-	var _markdownItFootnote = __webpack_require__(7);
-
-	var _markdownItFootnote2 = _interopRequireDefault(_markdownItFootnote);
-
-	var _markdownItDeflist = __webpack_require__(8);
-
-	var _markdownItDeflist2 = _interopRequireDefault(_markdownItDeflist);
-
-	var _markdownItAbbr = __webpack_require__(9);
-
-	var _markdownItAbbr2 = _interopRequireDefault(_markdownItAbbr);
-
-	var _markdownItIns = __webpack_require__(10);
-
-	var _markdownItIns2 = _interopRequireDefault(_markdownItIns);
-
-	var _markdownItMark = __webpack_require__(11);
-
-	var _markdownItMark2 = _interopRequireDefault(_markdownItMark);
-
-	var _markdownItTocAndAnchor = __webpack_require__(12);
-
-	var _markdownItTocAndAnchor2 = _interopRequireDefault(_markdownItTocAndAnchor);
-
-	var _markdownItKatex = __webpack_require__(13);
-
-	var _markdownItKatex2 = _interopRequireDefault(_markdownItKatex);
-
-	var _markdownItTaskLists = __webpack_require__(14);
-
-	var _markdownItTaskLists2 = _interopRequireDefault(_markdownItTaskLists);
-
-	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-	exports.default = {
-	  md: new _markdownIt2.default(),
-
-	  template: '<div><slot></slot></div>',
-
-	  data: function data() {
-	    return {
-	      sourceData: this.source
-	    };
-	  },
-
-
-	  props: {
-	    watches: {
-	      type: Array,
-	      default: function _default() {
-	        return ['source', 'show', 'toc'];
-	      }
-	    },
-	    source: {
-	      type: String,
-	      default: ''
-	    },
-	    show: {
-	      type: Boolean,
-	      default: true
-	    },
-	    highlight: {
-	      type: Boolean,
-	      default: true
-	    },
-	    html: {
-	      type: Boolean,
-	      default: true
-	    },
-	    xhtmlOut: {
-	      type: Boolean,
-	      default: true
-	    },
-	    breaks: {
-	      type: Boolean,
-	      default: true
-	    },
-	    linkify: {
-	      type: Boolean,
-	      default: true
-	    },
-	    emoji: {
-	      type: Boolean,
-	      default: true
-	    },
-	    typographer: {
-	      type: Boolean,
-	      default: true
-	    },
-	    langPrefix: {
-	      type: String,
-	      default: 'language-'
-	    },
-	    quotes: {
-	      type: String,
-	      default: '“”‘’'
-	    },
-	    tableClass: {
-	      type: String,
-	      default: 'table'
-	    },
-	    taskLists: {
-	      type: Boolean,
-	      default: true
-	    },
-	    toc: {
-	      type: Boolean,
-	      default: false
-	    },
-	    tocId: {
-	      type: String
-	    },
-	    tocClass: {
-	      type: String,
-	      default: 'table-of-contents'
-	    },
-	    tocFirstLevel: {
-	      type: Number,
-	      default: 2
-	    },
-	    tocLastLevel: {
-	      type: Number
-	    },
-	    tocAnchorLink: {
-	      type: Boolean,
-	      default: true
-	    },
-	    tocAnchorClass: {
-	      type: String,
-	      default: 'toc-anchor'
-	    },
-	    tocAnchorLinkSymbol: {
-	      type: String,
-	      default: '#'
-	    },
-	    tocAnchorLinkSpace: {
-	      type: Boolean,
-	      default: true
-	    },
-	    tocAnchorLinkClass: {
-	      type: String,
-	      default: 'toc-anchor-link'
-	    },
-	    anchorAttributes: {
-	      type: Object,
-	      default: function _default() {
-	        return {};
-	      }
-	    },
-	    prerender: {
-	      type: Function,
-	      default: function _default(sourceData) {
-	        return sourceData;
-	      }
-	    },
-	    postrender: {
-	      type: Function,
-	      default: function _default(htmlData) {
-	        return htmlData;
-	      }
-	    }
-	  },
-
-	  computed: {
-	    tocLastLevelComputed: function tocLastLevelComputed() {
-	      return this.tocLastLevel > this.tocFirstLevel ? this.tocLastLevel : this.tocFirstLevel + 1;
-	    }
-	  },
-
-	  render: function render(createElement) {
-	    var _this = this;
-
-	    this.md = new _markdownIt2.default().use(_markdownItSub2.default).use(_markdownItSup2.default).use(_markdownItFootnote2.default).use(_markdownItDeflist2.default).use(_markdownItAbbr2.default).use(_markdownItIns2.default).use(_markdownItMark2.default).use(_markdownItKatex2.default, { "throwOnError": false, "errorColor": " #cc0000" }).use(_markdownItTaskLists2.default, { enabled: this.taskLists });
-
-	    if (this.emoji) {
-	      this.md.use(_markdownItEmoji2.default);
-	    }
-
-	    this.md.set({
-	      html: this.html,
-	      xhtmlOut: this.xhtmlOut,
-	      breaks: this.breaks,
-	      linkify: this.linkify,
-	      typographer: this.typographer,
-	      langPrefix: this.langPrefix,
-	      quotes: this.quotes
-	    });
-	    this.md.renderer.rules.table_open = function () {
-	      return '<table class="' + _this.tableClass + '">\n';
-	    };
-	    var defaultLinkRenderer = this.md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
-	      return self.renderToken(tokens, idx, options);
-	    };
-	    this.md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-	      (0, _keys2.default)(_this.anchorAttributes).map(function (attribute) {
-	        var aIndex = tokens[idx].attrIndex(attribute);
-	        var value = _this.anchorAttributes[attribute];
-	        if (aIndex < 0) {
-	          tokens[idx].attrPush([attribute, value]); // add new attribute
-	        } else {
-	          tokens[idx].attrs[aIndex][1] = value;
-	        }
-	      });
-	      return defaultLinkRenderer(tokens, idx, options, env, self);
-	    };
-
-	    if (this.toc) {
-	      this.md.use(_markdownItTocAndAnchor2.default, {
-	        tocClassName: this.tocClass,
-	        tocFirstLevel: this.tocFirstLevel,
-	        tocLastLevel: this.tocLastLevelComputed,
-	        anchorLink: this.tocAnchorLink,
-	        anchorLinkSymbol: this.tocAnchorLinkSymbol,
-	        anchorLinkSpace: this.tocAnchorLinkSpace,
-	        anchorClassName: this.tocAnchorClass,
-	        anchorLinkSymbolClassName: this.tocAnchorLinkClass,
-	        tocCallback: function tocCallback(tocMarkdown, tocArray, tocHtml) {
-	          if (tocHtml) {
-	            if (_this.tocId && document.getElementById(_this.tocId)) {
-	              document.getElementById(_this.tocId).innerHTML = tocHtml;
-	            }
-
-	            _this.$emit('toc-rendered', tocHtml);
-	          }
-	        }
-	      });
-	    }
-
-	    var outHtml = this.show ? this.md.render(this.prerender(this.sourceData)) : '';
-	    outHtml = this.postrender(outHtml);
-
-	    this.$emit('rendered', outHtml);
-	    return createElement('div', {
-	      domProps: {
-	        innerHTML: outHtml
-	      }
-	    });
-	  },
-	  beforeMount: function beforeMount() {
-	    var _this2 = this;
-
-	    if (this.$slots.default) {
-	      this.sourceData = '';
-	      var _iteratorNormalCompletion = true;
-	      var _didIteratorError = false;
-	      var _iteratorError = undefined;
-
-	      try {
-	        for (var _iterator = (0, _getIterator3.default)(this.$slots.default), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-	          var slot = _step.value;
-
-	          this.sourceData += slot.text;
-	        }
-	      } catch (err) {
-	        _didIteratorError = true;
-	        _iteratorError = err;
-	      } finally {
-	        try {
-	          if (!_iteratorNormalCompletion && _iterator.return) {
-	            _iterator.return();
-	          }
-	        } finally {
-	          if (_didIteratorError) {
-	            throw _iteratorError;
-	          }
-	        }
-	      }
-	    }
-
-	    this.$watch('source', function () {
-	      _this2.sourceData = _this2.prerender(_this2.source);
-	      _this2.$forceUpdate();
-	    });
-
-	    this.watches.forEach(function (v) {
-	      _this2.$watch(v, function () {
-	        _this2.$forceUpdate();
-	      });
-	    });
-	  }
-	};
-
-/***/ }),
-/* 1 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_1__;
-
-/***/ }),
-/* 2 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_2__;
-
-/***/ }),
-/* 3 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_3__;
-
-/***/ }),
-/* 4 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_4__;
-
-/***/ }),
-/* 5 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_5__;
-
-/***/ }),
-/* 6 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_6__;
-
-/***/ }),
-/* 7 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_7__;
-
-/***/ }),
-/* 8 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_8__;
-
-/***/ }),
-/* 9 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_9__;
-
-/***/ }),
-/* 10 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_10__;
-
-/***/ }),
-/* 11 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_11__;
-
-/***/ }),
-/* 12 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_12__;
-
-/***/ }),
-/* 13 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_13__;
-
-/***/ }),
-/* 14 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_14__;
-
-/***/ })
-/******/ ])
-});
-;
-
-/***/ }),
-/* 301 */
-/***/ (function(module, exports, __webpack_require__) {
-
-module.exports = { "default": __webpack_require__(302), __esModule: true };
-
-/***/ }),
-/* 302 */
-/***/ (function(module, exports, __webpack_require__) {
-
-__webpack_require__(303);
-__webpack_require__(323);
-module.exports = __webpack_require__(325);
-
-
-/***/ }),
-/* 303 */
-/***/ (function(module, exports, __webpack_require__) {
-
-__webpack_require__(304);
-var global = __webpack_require__(253);
-var hide = __webpack_require__(256);
-var Iterators = __webpack_require__(258);
-var TO_STRING_TAG = __webpack_require__(254)('toStringTag');
+__webpack_require__(300);
+var global = __webpack_require__(8);
+var hide = __webpack_require__(12);
+var Iterators = __webpack_require__(15);
+var TO_STRING_TAG = __webpack_require__(9)('toStringTag');
 
 var DOMIterables = ('CSSRuleList,CSSStyleDeclaration,CSSValueList,ClientRectList,DOMRectList,DOMStringList,' +
   'DOMTokenList,DataTransferItemList,FileList,HTMLAllCollection,HTMLCollection,HTMLFormElement,HTMLSelectElement,' +
@@ -71131,21 +71296,21 @@ for (var i = 0; i < DOMIterables.length; i++) {
 
 
 /***/ }),
-/* 304 */
+/* 300 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
-var addToUnscopables = __webpack_require__(305);
-var step = __webpack_require__(306);
-var Iterators = __webpack_require__(258);
-var toIObject = __webpack_require__(267);
+var addToUnscopables = __webpack_require__(301);
+var step = __webpack_require__(302);
+var Iterators = __webpack_require__(15);
+var toIObject = __webpack_require__(25);
 
 // 22.1.3.4 Array.prototype.entries()
 // 22.1.3.13 Array.prototype.keys()
 // 22.1.3.29 Array.prototype.values()
 // 22.1.3.30 Array.prototype[@@iterator]()
-module.exports = __webpack_require__(279)(Array, 'Array', function (iterated, kind) {
+module.exports = __webpack_require__(170)(Array, 'Array', function (iterated, kind) {
   this._t = toIObject(iterated); // target
   this._i = 0;                   // next index
   this._k = kind;                // kind
@@ -71172,14 +71337,14 @@ addToUnscopables('entries');
 
 
 /***/ }),
-/* 305 */
+/* 301 */
 /***/ (function(module, exports) {
 
 module.exports = function () { /* empty */ };
 
 
 /***/ }),
-/* 306 */
+/* 302 */
 /***/ (function(module, exports) {
 
 module.exports = function (done, value) {
@@ -71188,11 +71353,11 @@ module.exports = function (done, value) {
 
 
 /***/ }),
-/* 307 */
+/* 303 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // fallback for non-array-like ES3 and non-enumerable old V8 strings
-var cof = __webpack_require__(278);
+var cof = __webpack_require__(169);
 // eslint-disable-next-line no-prototype-builtins
 module.exports = Object('z').propertyIsEnumerable(0) ? Object : function (it) {
   return cof(it) == 'String' ? it.split('') : Object(it);
@@ -71200,18 +71365,18 @@ module.exports = Object('z').propertyIsEnumerable(0) ? Object : function (it) {
 
 
 /***/ }),
-/* 308 */
+/* 304 */
 /***/ (function(module, exports) {
 
 module.exports = true;
 
 
 /***/ }),
-/* 309 */
+/* 305 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // optional / simple context binding
-var aFunction = __webpack_require__(310);
+var aFunction = __webpack_require__(306);
 module.exports = function (fn, that, length) {
   aFunction(fn);
   if (that === undefined) return fn;
@@ -71233,7 +71398,7 @@ module.exports = function (fn, that, length) {
 
 
 /***/ }),
-/* 310 */
+/* 306 */
 /***/ (function(module, exports) {
 
 module.exports = function (it) {
@@ -71243,20 +71408,20 @@ module.exports = function (it) {
 
 
 /***/ }),
-/* 311 */
+/* 307 */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = !__webpack_require__(260) && !__webpack_require__(271)(function () {
-  return Object.defineProperty(__webpack_require__(281)('div'), 'a', { get: function () { return 7; } }).a != 7;
+module.exports = !__webpack_require__(17) && !__webpack_require__(29)(function () {
+  return Object.defineProperty(__webpack_require__(172)('div'), 'a', { get: function () { return 7; } }).a != 7;
 });
 
 
 /***/ }),
-/* 312 */
+/* 308 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // 7.1.1 ToPrimitive(input [, PreferredType])
-var isObject = __webpack_require__(270);
+var isObject = __webpack_require__(28);
 // instead of the ES6 spec version, we didn't implement @@toPrimitive case
 // and the second argument - flag - preferred type is a string
 module.exports = function (it, S) {
@@ -71270,25 +71435,25 @@ module.exports = function (it, S) {
 
 
 /***/ }),
-/* 313 */
+/* 309 */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = __webpack_require__(256);
+module.exports = __webpack_require__(12);
 
 
 /***/ }),
-/* 314 */
+/* 310 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
-var create = __webpack_require__(315);
-var descriptor = __webpack_require__(282);
-var setToStringTag = __webpack_require__(287);
+var create = __webpack_require__(311);
+var descriptor = __webpack_require__(173);
+var setToStringTag = __webpack_require__(178);
 var IteratorPrototype = {};
 
 // 25.1.2.1.1 %IteratorPrototype%[@@iterator]()
-__webpack_require__(256)(IteratorPrototype, __webpack_require__(254)('iterator'), function () { return this; });
+__webpack_require__(12)(IteratorPrototype, __webpack_require__(9)('iterator'), function () { return this; });
 
 module.exports = function (Constructor, NAME, next) {
   Constructor.prototype = create(IteratorPrototype, { next: descriptor(1, next) });
@@ -71297,27 +71462,27 @@ module.exports = function (Constructor, NAME, next) {
 
 
 /***/ }),
-/* 315 */
+/* 311 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // 19.1.2.2 / 15.2.3.5 Object.create(O [, Properties])
-var anObject = __webpack_require__(259);
-var dPs = __webpack_require__(316);
-var enumBugKeys = __webpack_require__(286);
-var IE_PROTO = __webpack_require__(273)('IE_PROTO');
+var anObject = __webpack_require__(16);
+var dPs = __webpack_require__(312);
+var enumBugKeys = __webpack_require__(177);
+var IE_PROTO = __webpack_require__(31)('IE_PROTO');
 var Empty = function () { /* empty */ };
 var PROTOTYPE = 'prototype';
 
 // Create object with fake `null` prototype: use iframe Object with cleared prototype
 var createDict = function () {
   // Thrash, waste and sodomy: IE GC bug
-  var iframe = __webpack_require__(281)('iframe');
+  var iframe = __webpack_require__(172)('iframe');
   var i = enumBugKeys.length;
   var lt = '<';
   var gt = '>';
   var iframeDocument;
   iframe.style.display = 'none';
-  __webpack_require__(321).appendChild(iframe);
+  __webpack_require__(317).appendChild(iframe);
   iframe.src = 'javascript:'; // eslint-disable-line no-script-url
   // createDict = iframe.contentWindow.Object;
   // html.removeChild(iframe);
@@ -71344,14 +71509,14 @@ module.exports = Object.create || function create(O, Properties) {
 
 
 /***/ }),
-/* 316 */
+/* 312 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var dP = __webpack_require__(269);
-var anObject = __webpack_require__(259);
-var getKeys = __webpack_require__(283);
+var dP = __webpack_require__(27);
+var anObject = __webpack_require__(16);
+var getKeys = __webpack_require__(174);
 
-module.exports = __webpack_require__(260) ? Object.defineProperties : function defineProperties(O, Properties) {
+module.exports = __webpack_require__(17) ? Object.defineProperties : function defineProperties(O, Properties) {
   anObject(O);
   var keys = getKeys(Properties);
   var length = keys.length;
@@ -71363,13 +71528,13 @@ module.exports = __webpack_require__(260) ? Object.defineProperties : function d
 
 
 /***/ }),
-/* 317 */
+/* 313 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var has = __webpack_require__(261);
-var toIObject = __webpack_require__(267);
-var arrayIndexOf = __webpack_require__(318)(false);
-var IE_PROTO = __webpack_require__(273)('IE_PROTO');
+var has = __webpack_require__(18);
+var toIObject = __webpack_require__(25);
+var arrayIndexOf = __webpack_require__(314)(false);
+var IE_PROTO = __webpack_require__(31)('IE_PROTO');
 
 module.exports = function (object, names) {
   var O = toIObject(object);
@@ -71386,14 +71551,14 @@ module.exports = function (object, names) {
 
 
 /***/ }),
-/* 318 */
+/* 314 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // false -> Array#indexOf
 // true  -> Array#includes
-var toIObject = __webpack_require__(267);
-var toLength = __webpack_require__(319);
-var toAbsoluteIndex = __webpack_require__(320);
+var toIObject = __webpack_require__(25);
+var toLength = __webpack_require__(315);
+var toAbsoluteIndex = __webpack_require__(316);
 module.exports = function (IS_INCLUDES) {
   return function ($this, el, fromIndex) {
     var O = toIObject($this);
@@ -71415,11 +71580,11 @@ module.exports = function (IS_INCLUDES) {
 
 
 /***/ }),
-/* 319 */
+/* 315 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // 7.1.15 ToLength
-var toInteger = __webpack_require__(272);
+var toInteger = __webpack_require__(30);
 var min = Math.min;
 module.exports = function (it) {
   return it > 0 ? min(toInteger(it), 0x1fffffffffffff) : 0; // pow(2, 53) - 1 == 9007199254740991
@@ -71427,10 +71592,10 @@ module.exports = function (it) {
 
 
 /***/ }),
-/* 320 */
+/* 316 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var toInteger = __webpack_require__(272);
+var toInteger = __webpack_require__(30);
 var max = Math.max;
 var min = Math.min;
 module.exports = function (index, length) {
@@ -71440,21 +71605,21 @@ module.exports = function (index, length) {
 
 
 /***/ }),
-/* 321 */
+/* 317 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var document = __webpack_require__(253).document;
+var document = __webpack_require__(8).document;
 module.exports = document && document.documentElement;
 
 
 /***/ }),
-/* 322 */
+/* 318 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // 19.1.2.9 / 15.2.3.2 Object.getPrototypeOf(O)
-var has = __webpack_require__(261);
-var toObject = __webpack_require__(288);
-var IE_PROTO = __webpack_require__(273)('IE_PROTO');
+var has = __webpack_require__(18);
+var toObject = __webpack_require__(179);
+var IE_PROTO = __webpack_require__(31)('IE_PROTO');
 var ObjectProto = Object.prototype;
 
 module.exports = Object.getPrototypeOf || function (O) {
@@ -71467,15 +71632,15 @@ module.exports = Object.getPrototypeOf || function (O) {
 
 
 /***/ }),
-/* 323 */
+/* 319 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
-var $at = __webpack_require__(324)(true);
+var $at = __webpack_require__(320)(true);
 
 // 21.1.3.27 String.prototype[@@iterator]()
-__webpack_require__(279)(String, 'String', function (iterated) {
+__webpack_require__(170)(String, 'String', function (iterated) {
   this._t = String(iterated); // target
   this._i = 0;                // next index
 // 21.1.5.2.1 %StringIteratorPrototype%.next()
@@ -71491,11 +71656,11 @@ __webpack_require__(279)(String, 'String', function (iterated) {
 
 
 /***/ }),
-/* 324 */
+/* 320 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var toInteger = __webpack_require__(272);
-var defined = __webpack_require__(268);
+var toInteger = __webpack_require__(30);
+var defined = __webpack_require__(26);
 // true  -> String#at
 // false -> String#codePointAt
 module.exports = function (TO_STRING) {
@@ -71514,12 +71679,12 @@ module.exports = function (TO_STRING) {
 
 
 /***/ }),
-/* 325 */
+/* 321 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var anObject = __webpack_require__(259);
-var get = __webpack_require__(326);
-module.exports = __webpack_require__(255).getIterator = function (it) {
+var anObject = __webpack_require__(16);
+var get = __webpack_require__(322);
+module.exports = __webpack_require__(11).getIterator = function (it) {
   var iterFn = get(it);
   if (typeof iterFn != 'function') throw TypeError(it + ' is not iterable!');
   return anObject(iterFn.call(it));
@@ -71527,13 +71692,13 @@ module.exports = __webpack_require__(255).getIterator = function (it) {
 
 
 /***/ }),
-/* 326 */
+/* 322 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var classof = __webpack_require__(327);
-var ITERATOR = __webpack_require__(254)('iterator');
-var Iterators = __webpack_require__(258);
-module.exports = __webpack_require__(255).getIteratorMethod = function (it) {
+var classof = __webpack_require__(323);
+var ITERATOR = __webpack_require__(9)('iterator');
+var Iterators = __webpack_require__(15);
+module.exports = __webpack_require__(11).getIteratorMethod = function (it) {
   if (it != undefined) return it[ITERATOR]
     || it['@@iterator']
     || Iterators[classof(it)];
@@ -71541,12 +71706,12 @@ module.exports = __webpack_require__(255).getIteratorMethod = function (it) {
 
 
 /***/ }),
-/* 327 */
+/* 323 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // getting tag from 19.1.3.6 Object.prototype.toString()
-var cof = __webpack_require__(278);
-var TAG = __webpack_require__(254)('toStringTag');
+var cof = __webpack_require__(169);
+var TAG = __webpack_require__(9)('toStringTag');
 // ES3 wrong here
 var ARG = cof(function () { return arguments; }()) == 'Arguments';
 
@@ -71570,28 +71735,28 @@ module.exports = function (it) {
 
 
 /***/ }),
-/* 328 */
+/* 324 */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = { "default": __webpack_require__(329), __esModule: true };
+module.exports = { "default": __webpack_require__(325), __esModule: true };
 
 /***/ }),
-/* 329 */
+/* 325 */
 /***/ (function(module, exports, __webpack_require__) {
 
-__webpack_require__(330);
-module.exports = __webpack_require__(255).Object.keys;
+__webpack_require__(326);
+module.exports = __webpack_require__(11).Object.keys;
 
 
 /***/ }),
-/* 330 */
+/* 326 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // 19.1.2.14 Object.keys(O)
-var toObject = __webpack_require__(288);
-var $keys = __webpack_require__(283);
+var toObject = __webpack_require__(179);
+var $keys = __webpack_require__(174);
 
-__webpack_require__(331)('keys', function () {
+__webpack_require__(327)('keys', function () {
   return function keys(it) {
     return $keys(toObject(it));
   };
@@ -71599,13 +71764,13 @@ __webpack_require__(331)('keys', function () {
 
 
 /***/ }),
-/* 331 */
+/* 327 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // most Object methods by ES6 should accept primitives
-var $export = __webpack_require__(280);
-var core = __webpack_require__(255);
-var fails = __webpack_require__(271);
+var $export = __webpack_require__(171);
+var core = __webpack_require__(11);
+var fails = __webpack_require__(29);
 module.exports = function (KEY, exec) {
   var fn = (core.Object || {})[KEY] || Object[KEY];
   var exp = {};
@@ -71615,18 +71780,18 @@ module.exports = function (KEY, exec) {
 
 
 /***/ }),
-/* 332 */
+/* 328 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
 
-module.exports = __webpack_require__(333);
+module.exports = __webpack_require__(329);
 
 
 /***/ }),
-/* 333 */
+/* 329 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -71635,21 +71800,21 @@ module.exports = __webpack_require__(333);
 
 
 
-var utils        = __webpack_require__(250);
-var helpers      = __webpack_require__(341);
-var Renderer     = __webpack_require__(342);
-var ParserCore   = __webpack_require__(343);
-var ParserBlock  = __webpack_require__(351);
-var ParserInline = __webpack_require__(365);
-var LinkifyIt    = __webpack_require__(378);
-var mdurl        = __webpack_require__(290);
-var punycode     = __webpack_require__(380);
+var utils        = __webpack_require__(1);
+var helpers      = __webpack_require__(337);
+var Renderer     = __webpack_require__(338);
+var ParserCore   = __webpack_require__(339);
+var ParserBlock  = __webpack_require__(347);
+var ParserInline = __webpack_require__(361);
+var LinkifyIt    = __webpack_require__(374);
+var mdurl        = __webpack_require__(181);
+var punycode     = __webpack_require__(376);
 
 
 var config = {
-  'default': __webpack_require__(381),
-  zero: __webpack_require__(382),
-  commonmark: __webpack_require__(383)
+  'default': __webpack_require__(377),
+  zero: __webpack_require__(378),
+  commonmark: __webpack_require__(379)
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72210,13 +72375,13 @@ module.exports = MarkdownIt;
 
 
 /***/ }),
-/* 334 */
+/* 330 */
 /***/ (function(module, exports) {
 
 module.exports = {"Aacute":"Á","aacute":"á","Abreve":"Ă","abreve":"ă","ac":"∾","acd":"∿","acE":"∾̳","Acirc":"Â","acirc":"â","acute":"´","Acy":"А","acy":"а","AElig":"Æ","aelig":"æ","af":"⁡","Afr":"𝔄","afr":"𝔞","Agrave":"À","agrave":"à","alefsym":"ℵ","aleph":"ℵ","Alpha":"Α","alpha":"α","Amacr":"Ā","amacr":"ā","amalg":"⨿","amp":"&","AMP":"&","andand":"⩕","And":"⩓","and":"∧","andd":"⩜","andslope":"⩘","andv":"⩚","ang":"∠","ange":"⦤","angle":"∠","angmsdaa":"⦨","angmsdab":"⦩","angmsdac":"⦪","angmsdad":"⦫","angmsdae":"⦬","angmsdaf":"⦭","angmsdag":"⦮","angmsdah":"⦯","angmsd":"∡","angrt":"∟","angrtvb":"⊾","angrtvbd":"⦝","angsph":"∢","angst":"Å","angzarr":"⍼","Aogon":"Ą","aogon":"ą","Aopf":"𝔸","aopf":"𝕒","apacir":"⩯","ap":"≈","apE":"⩰","ape":"≊","apid":"≋","apos":"'","ApplyFunction":"⁡","approx":"≈","approxeq":"≊","Aring":"Å","aring":"å","Ascr":"𝒜","ascr":"𝒶","Assign":"≔","ast":"*","asymp":"≈","asympeq":"≍","Atilde":"Ã","atilde":"ã","Auml":"Ä","auml":"ä","awconint":"∳","awint":"⨑","backcong":"≌","backepsilon":"϶","backprime":"‵","backsim":"∽","backsimeq":"⋍","Backslash":"∖","Barv":"⫧","barvee":"⊽","barwed":"⌅","Barwed":"⌆","barwedge":"⌅","bbrk":"⎵","bbrktbrk":"⎶","bcong":"≌","Bcy":"Б","bcy":"б","bdquo":"„","becaus":"∵","because":"∵","Because":"∵","bemptyv":"⦰","bepsi":"϶","bernou":"ℬ","Bernoullis":"ℬ","Beta":"Β","beta":"β","beth":"ℶ","between":"≬","Bfr":"𝔅","bfr":"𝔟","bigcap":"⋂","bigcirc":"◯","bigcup":"⋃","bigodot":"⨀","bigoplus":"⨁","bigotimes":"⨂","bigsqcup":"⨆","bigstar":"★","bigtriangledown":"▽","bigtriangleup":"△","biguplus":"⨄","bigvee":"⋁","bigwedge":"⋀","bkarow":"⤍","blacklozenge":"⧫","blacksquare":"▪","blacktriangle":"▴","blacktriangledown":"▾","blacktriangleleft":"◂","blacktriangleright":"▸","blank":"␣","blk12":"▒","blk14":"░","blk34":"▓","block":"█","bne":"=⃥","bnequiv":"≡⃥","bNot":"⫭","bnot":"⌐","Bopf":"𝔹","bopf":"𝕓","bot":"⊥","bottom":"⊥","bowtie":"⋈","boxbox":"⧉","boxdl":"┐","boxdL":"╕","boxDl":"╖","boxDL":"╗","boxdr":"┌","boxdR":"╒","boxDr":"╓","boxDR":"╔","boxh":"─","boxH":"═","boxhd":"┬","boxHd":"╤","boxhD":"╥","boxHD":"╦","boxhu":"┴","boxHu":"╧","boxhU":"╨","boxHU":"╩","boxminus":"⊟","boxplus":"⊞","boxtimes":"⊠","boxul":"┘","boxuL":"╛","boxUl":"╜","boxUL":"╝","boxur":"└","boxuR":"╘","boxUr":"╙","boxUR":"╚","boxv":"│","boxV":"║","boxvh":"┼","boxvH":"╪","boxVh":"╫","boxVH":"╬","boxvl":"┤","boxvL":"╡","boxVl":"╢","boxVL":"╣","boxvr":"├","boxvR":"╞","boxVr":"╟","boxVR":"╠","bprime":"‵","breve":"˘","Breve":"˘","brvbar":"¦","bscr":"𝒷","Bscr":"ℬ","bsemi":"⁏","bsim":"∽","bsime":"⋍","bsolb":"⧅","bsol":"\\","bsolhsub":"⟈","bull":"•","bullet":"•","bump":"≎","bumpE":"⪮","bumpe":"≏","Bumpeq":"≎","bumpeq":"≏","Cacute":"Ć","cacute":"ć","capand":"⩄","capbrcup":"⩉","capcap":"⩋","cap":"∩","Cap":"⋒","capcup":"⩇","capdot":"⩀","CapitalDifferentialD":"ⅅ","caps":"∩︀","caret":"⁁","caron":"ˇ","Cayleys":"ℭ","ccaps":"⩍","Ccaron":"Č","ccaron":"č","Ccedil":"Ç","ccedil":"ç","Ccirc":"Ĉ","ccirc":"ĉ","Cconint":"∰","ccups":"⩌","ccupssm":"⩐","Cdot":"Ċ","cdot":"ċ","cedil":"¸","Cedilla":"¸","cemptyv":"⦲","cent":"¢","centerdot":"·","CenterDot":"·","cfr":"𝔠","Cfr":"ℭ","CHcy":"Ч","chcy":"ч","check":"✓","checkmark":"✓","Chi":"Χ","chi":"χ","circ":"ˆ","circeq":"≗","circlearrowleft":"↺","circlearrowright":"↻","circledast":"⊛","circledcirc":"⊚","circleddash":"⊝","CircleDot":"⊙","circledR":"®","circledS":"Ⓢ","CircleMinus":"⊖","CirclePlus":"⊕","CircleTimes":"⊗","cir":"○","cirE":"⧃","cire":"≗","cirfnint":"⨐","cirmid":"⫯","cirscir":"⧂","ClockwiseContourIntegral":"∲","CloseCurlyDoubleQuote":"”","CloseCurlyQuote":"’","clubs":"♣","clubsuit":"♣","colon":":","Colon":"∷","Colone":"⩴","colone":"≔","coloneq":"≔","comma":",","commat":"@","comp":"∁","compfn":"∘","complement":"∁","complexes":"ℂ","cong":"≅","congdot":"⩭","Congruent":"≡","conint":"∮","Conint":"∯","ContourIntegral":"∮","copf":"𝕔","Copf":"ℂ","coprod":"∐","Coproduct":"∐","copy":"©","COPY":"©","copysr":"℗","CounterClockwiseContourIntegral":"∳","crarr":"↵","cross":"✗","Cross":"⨯","Cscr":"𝒞","cscr":"𝒸","csub":"⫏","csube":"⫑","csup":"⫐","csupe":"⫒","ctdot":"⋯","cudarrl":"⤸","cudarrr":"⤵","cuepr":"⋞","cuesc":"⋟","cularr":"↶","cularrp":"⤽","cupbrcap":"⩈","cupcap":"⩆","CupCap":"≍","cup":"∪","Cup":"⋓","cupcup":"⩊","cupdot":"⊍","cupor":"⩅","cups":"∪︀","curarr":"↷","curarrm":"⤼","curlyeqprec":"⋞","curlyeqsucc":"⋟","curlyvee":"⋎","curlywedge":"⋏","curren":"¤","curvearrowleft":"↶","curvearrowright":"↷","cuvee":"⋎","cuwed":"⋏","cwconint":"∲","cwint":"∱","cylcty":"⌭","dagger":"†","Dagger":"‡","daleth":"ℸ","darr":"↓","Darr":"↡","dArr":"⇓","dash":"‐","Dashv":"⫤","dashv":"⊣","dbkarow":"⤏","dblac":"˝","Dcaron":"Ď","dcaron":"ď","Dcy":"Д","dcy":"д","ddagger":"‡","ddarr":"⇊","DD":"ⅅ","dd":"ⅆ","DDotrahd":"⤑","ddotseq":"⩷","deg":"°","Del":"∇","Delta":"Δ","delta":"δ","demptyv":"⦱","dfisht":"⥿","Dfr":"𝔇","dfr":"𝔡","dHar":"⥥","dharl":"⇃","dharr":"⇂","DiacriticalAcute":"´","DiacriticalDot":"˙","DiacriticalDoubleAcute":"˝","DiacriticalGrave":"`","DiacriticalTilde":"˜","diam":"⋄","diamond":"⋄","Diamond":"⋄","diamondsuit":"♦","diams":"♦","die":"¨","DifferentialD":"ⅆ","digamma":"ϝ","disin":"⋲","div":"÷","divide":"÷","divideontimes":"⋇","divonx":"⋇","DJcy":"Ђ","djcy":"ђ","dlcorn":"⌞","dlcrop":"⌍","dollar":"$","Dopf":"𝔻","dopf":"𝕕","Dot":"¨","dot":"˙","DotDot":"⃜","doteq":"≐","doteqdot":"≑","DotEqual":"≐","dotminus":"∸","dotplus":"∔","dotsquare":"⊡","doublebarwedge":"⌆","DoubleContourIntegral":"∯","DoubleDot":"¨","DoubleDownArrow":"⇓","DoubleLeftArrow":"⇐","DoubleLeftRightArrow":"⇔","DoubleLeftTee":"⫤","DoubleLongLeftArrow":"⟸","DoubleLongLeftRightArrow":"⟺","DoubleLongRightArrow":"⟹","DoubleRightArrow":"⇒","DoubleRightTee":"⊨","DoubleUpArrow":"⇑","DoubleUpDownArrow":"⇕","DoubleVerticalBar":"∥","DownArrowBar":"⤓","downarrow":"↓","DownArrow":"↓","Downarrow":"⇓","DownArrowUpArrow":"⇵","DownBreve":"̑","downdownarrows":"⇊","downharpoonleft":"⇃","downharpoonright":"⇂","DownLeftRightVector":"⥐","DownLeftTeeVector":"⥞","DownLeftVectorBar":"⥖","DownLeftVector":"↽","DownRightTeeVector":"⥟","DownRightVectorBar":"⥗","DownRightVector":"⇁","DownTeeArrow":"↧","DownTee":"⊤","drbkarow":"⤐","drcorn":"⌟","drcrop":"⌌","Dscr":"𝒟","dscr":"𝒹","DScy":"Ѕ","dscy":"ѕ","dsol":"⧶","Dstrok":"Đ","dstrok":"đ","dtdot":"⋱","dtri":"▿","dtrif":"▾","duarr":"⇵","duhar":"⥯","dwangle":"⦦","DZcy":"Џ","dzcy":"џ","dzigrarr":"⟿","Eacute":"É","eacute":"é","easter":"⩮","Ecaron":"Ě","ecaron":"ě","Ecirc":"Ê","ecirc":"ê","ecir":"≖","ecolon":"≕","Ecy":"Э","ecy":"э","eDDot":"⩷","Edot":"Ė","edot":"ė","eDot":"≑","ee":"ⅇ","efDot":"≒","Efr":"𝔈","efr":"𝔢","eg":"⪚","Egrave":"È","egrave":"è","egs":"⪖","egsdot":"⪘","el":"⪙","Element":"∈","elinters":"⏧","ell":"ℓ","els":"⪕","elsdot":"⪗","Emacr":"Ē","emacr":"ē","empty":"∅","emptyset":"∅","EmptySmallSquare":"◻","emptyv":"∅","EmptyVerySmallSquare":"▫","emsp13":" ","emsp14":" ","emsp":" ","ENG":"Ŋ","eng":"ŋ","ensp":" ","Eogon":"Ę","eogon":"ę","Eopf":"𝔼","eopf":"𝕖","epar":"⋕","eparsl":"⧣","eplus":"⩱","epsi":"ε","Epsilon":"Ε","epsilon":"ε","epsiv":"ϵ","eqcirc":"≖","eqcolon":"≕","eqsim":"≂","eqslantgtr":"⪖","eqslantless":"⪕","Equal":"⩵","equals":"=","EqualTilde":"≂","equest":"≟","Equilibrium":"⇌","equiv":"≡","equivDD":"⩸","eqvparsl":"⧥","erarr":"⥱","erDot":"≓","escr":"ℯ","Escr":"ℰ","esdot":"≐","Esim":"⩳","esim":"≂","Eta":"Η","eta":"η","ETH":"Ð","eth":"ð","Euml":"Ë","euml":"ë","euro":"€","excl":"!","exist":"∃","Exists":"∃","expectation":"ℰ","exponentiale":"ⅇ","ExponentialE":"ⅇ","fallingdotseq":"≒","Fcy":"Ф","fcy":"ф","female":"♀","ffilig":"ﬃ","fflig":"ﬀ","ffllig":"ﬄ","Ffr":"𝔉","ffr":"𝔣","filig":"ﬁ","FilledSmallSquare":"◼","FilledVerySmallSquare":"▪","fjlig":"fj","flat":"♭","fllig":"ﬂ","fltns":"▱","fnof":"ƒ","Fopf":"𝔽","fopf":"𝕗","forall":"∀","ForAll":"∀","fork":"⋔","forkv":"⫙","Fouriertrf":"ℱ","fpartint":"⨍","frac12":"½","frac13":"⅓","frac14":"¼","frac15":"⅕","frac16":"⅙","frac18":"⅛","frac23":"⅔","frac25":"⅖","frac34":"¾","frac35":"⅗","frac38":"⅜","frac45":"⅘","frac56":"⅚","frac58":"⅝","frac78":"⅞","frasl":"⁄","frown":"⌢","fscr":"𝒻","Fscr":"ℱ","gacute":"ǵ","Gamma":"Γ","gamma":"γ","Gammad":"Ϝ","gammad":"ϝ","gap":"⪆","Gbreve":"Ğ","gbreve":"ğ","Gcedil":"Ģ","Gcirc":"Ĝ","gcirc":"ĝ","Gcy":"Г","gcy":"г","Gdot":"Ġ","gdot":"ġ","ge":"≥","gE":"≧","gEl":"⪌","gel":"⋛","geq":"≥","geqq":"≧","geqslant":"⩾","gescc":"⪩","ges":"⩾","gesdot":"⪀","gesdoto":"⪂","gesdotol":"⪄","gesl":"⋛︀","gesles":"⪔","Gfr":"𝔊","gfr":"𝔤","gg":"≫","Gg":"⋙","ggg":"⋙","gimel":"ℷ","GJcy":"Ѓ","gjcy":"ѓ","gla":"⪥","gl":"≷","glE":"⪒","glj":"⪤","gnap":"⪊","gnapprox":"⪊","gne":"⪈","gnE":"≩","gneq":"⪈","gneqq":"≩","gnsim":"⋧","Gopf":"𝔾","gopf":"𝕘","grave":"`","GreaterEqual":"≥","GreaterEqualLess":"⋛","GreaterFullEqual":"≧","GreaterGreater":"⪢","GreaterLess":"≷","GreaterSlantEqual":"⩾","GreaterTilde":"≳","Gscr":"𝒢","gscr":"ℊ","gsim":"≳","gsime":"⪎","gsiml":"⪐","gtcc":"⪧","gtcir":"⩺","gt":">","GT":">","Gt":"≫","gtdot":"⋗","gtlPar":"⦕","gtquest":"⩼","gtrapprox":"⪆","gtrarr":"⥸","gtrdot":"⋗","gtreqless":"⋛","gtreqqless":"⪌","gtrless":"≷","gtrsim":"≳","gvertneqq":"≩︀","gvnE":"≩︀","Hacek":"ˇ","hairsp":" ","half":"½","hamilt":"ℋ","HARDcy":"Ъ","hardcy":"ъ","harrcir":"⥈","harr":"↔","hArr":"⇔","harrw":"↭","Hat":"^","hbar":"ℏ","Hcirc":"Ĥ","hcirc":"ĥ","hearts":"♥","heartsuit":"♥","hellip":"…","hercon":"⊹","hfr":"𝔥","Hfr":"ℌ","HilbertSpace":"ℋ","hksearow":"⤥","hkswarow":"⤦","hoarr":"⇿","homtht":"∻","hookleftarrow":"↩","hookrightarrow":"↪","hopf":"𝕙","Hopf":"ℍ","horbar":"―","HorizontalLine":"─","hscr":"𝒽","Hscr":"ℋ","hslash":"ℏ","Hstrok":"Ħ","hstrok":"ħ","HumpDownHump":"≎","HumpEqual":"≏","hybull":"⁃","hyphen":"‐","Iacute":"Í","iacute":"í","ic":"⁣","Icirc":"Î","icirc":"î","Icy":"И","icy":"и","Idot":"İ","IEcy":"Е","iecy":"е","iexcl":"¡","iff":"⇔","ifr":"𝔦","Ifr":"ℑ","Igrave":"Ì","igrave":"ì","ii":"ⅈ","iiiint":"⨌","iiint":"∭","iinfin":"⧜","iiota":"℩","IJlig":"Ĳ","ijlig":"ĳ","Imacr":"Ī","imacr":"ī","image":"ℑ","ImaginaryI":"ⅈ","imagline":"ℐ","imagpart":"ℑ","imath":"ı","Im":"ℑ","imof":"⊷","imped":"Ƶ","Implies":"⇒","incare":"℅","in":"∈","infin":"∞","infintie":"⧝","inodot":"ı","intcal":"⊺","int":"∫","Int":"∬","integers":"ℤ","Integral":"∫","intercal":"⊺","Intersection":"⋂","intlarhk":"⨗","intprod":"⨼","InvisibleComma":"⁣","InvisibleTimes":"⁢","IOcy":"Ё","iocy":"ё","Iogon":"Į","iogon":"į","Iopf":"𝕀","iopf":"𝕚","Iota":"Ι","iota":"ι","iprod":"⨼","iquest":"¿","iscr":"𝒾","Iscr":"ℐ","isin":"∈","isindot":"⋵","isinE":"⋹","isins":"⋴","isinsv":"⋳","isinv":"∈","it":"⁢","Itilde":"Ĩ","itilde":"ĩ","Iukcy":"І","iukcy":"і","Iuml":"Ï","iuml":"ï","Jcirc":"Ĵ","jcirc":"ĵ","Jcy":"Й","jcy":"й","Jfr":"𝔍","jfr":"𝔧","jmath":"ȷ","Jopf":"𝕁","jopf":"𝕛","Jscr":"𝒥","jscr":"𝒿","Jsercy":"Ј","jsercy":"ј","Jukcy":"Є","jukcy":"є","Kappa":"Κ","kappa":"κ","kappav":"ϰ","Kcedil":"Ķ","kcedil":"ķ","Kcy":"К","kcy":"к","Kfr":"𝔎","kfr":"𝔨","kgreen":"ĸ","KHcy":"Х","khcy":"х","KJcy":"Ќ","kjcy":"ќ","Kopf":"𝕂","kopf":"𝕜","Kscr":"𝒦","kscr":"𝓀","lAarr":"⇚","Lacute":"Ĺ","lacute":"ĺ","laemptyv":"⦴","lagran":"ℒ","Lambda":"Λ","lambda":"λ","lang":"⟨","Lang":"⟪","langd":"⦑","langle":"⟨","lap":"⪅","Laplacetrf":"ℒ","laquo":"«","larrb":"⇤","larrbfs":"⤟","larr":"←","Larr":"↞","lArr":"⇐","larrfs":"⤝","larrhk":"↩","larrlp":"↫","larrpl":"⤹","larrsim":"⥳","larrtl":"↢","latail":"⤙","lAtail":"⤛","lat":"⪫","late":"⪭","lates":"⪭︀","lbarr":"⤌","lBarr":"⤎","lbbrk":"❲","lbrace":"{","lbrack":"[","lbrke":"⦋","lbrksld":"⦏","lbrkslu":"⦍","Lcaron":"Ľ","lcaron":"ľ","Lcedil":"Ļ","lcedil":"ļ","lceil":"⌈","lcub":"{","Lcy":"Л","lcy":"л","ldca":"⤶","ldquo":"“","ldquor":"„","ldrdhar":"⥧","ldrushar":"⥋","ldsh":"↲","le":"≤","lE":"≦","LeftAngleBracket":"⟨","LeftArrowBar":"⇤","leftarrow":"←","LeftArrow":"←","Leftarrow":"⇐","LeftArrowRightArrow":"⇆","leftarrowtail":"↢","LeftCeiling":"⌈","LeftDoubleBracket":"⟦","LeftDownTeeVector":"⥡","LeftDownVectorBar":"⥙","LeftDownVector":"⇃","LeftFloor":"⌊","leftharpoondown":"↽","leftharpoonup":"↼","leftleftarrows":"⇇","leftrightarrow":"↔","LeftRightArrow":"↔","Leftrightarrow":"⇔","leftrightarrows":"⇆","leftrightharpoons":"⇋","leftrightsquigarrow":"↭","LeftRightVector":"⥎","LeftTeeArrow":"↤","LeftTee":"⊣","LeftTeeVector":"⥚","leftthreetimes":"⋋","LeftTriangleBar":"⧏","LeftTriangle":"⊲","LeftTriangleEqual":"⊴","LeftUpDownVector":"⥑","LeftUpTeeVector":"⥠","LeftUpVectorBar":"⥘","LeftUpVector":"↿","LeftVectorBar":"⥒","LeftVector":"↼","lEg":"⪋","leg":"⋚","leq":"≤","leqq":"≦","leqslant":"⩽","lescc":"⪨","les":"⩽","lesdot":"⩿","lesdoto":"⪁","lesdotor":"⪃","lesg":"⋚︀","lesges":"⪓","lessapprox":"⪅","lessdot":"⋖","lesseqgtr":"⋚","lesseqqgtr":"⪋","LessEqualGreater":"⋚","LessFullEqual":"≦","LessGreater":"≶","lessgtr":"≶","LessLess":"⪡","lesssim":"≲","LessSlantEqual":"⩽","LessTilde":"≲","lfisht":"⥼","lfloor":"⌊","Lfr":"𝔏","lfr":"𝔩","lg":"≶","lgE":"⪑","lHar":"⥢","lhard":"↽","lharu":"↼","lharul":"⥪","lhblk":"▄","LJcy":"Љ","ljcy":"љ","llarr":"⇇","ll":"≪","Ll":"⋘","llcorner":"⌞","Lleftarrow":"⇚","llhard":"⥫","lltri":"◺","Lmidot":"Ŀ","lmidot":"ŀ","lmoustache":"⎰","lmoust":"⎰","lnap":"⪉","lnapprox":"⪉","lne":"⪇","lnE":"≨","lneq":"⪇","lneqq":"≨","lnsim":"⋦","loang":"⟬","loarr":"⇽","lobrk":"⟦","longleftarrow":"⟵","LongLeftArrow":"⟵","Longleftarrow":"⟸","longleftrightarrow":"⟷","LongLeftRightArrow":"⟷","Longleftrightarrow":"⟺","longmapsto":"⟼","longrightarrow":"⟶","LongRightArrow":"⟶","Longrightarrow":"⟹","looparrowleft":"↫","looparrowright":"↬","lopar":"⦅","Lopf":"𝕃","lopf":"𝕝","loplus":"⨭","lotimes":"⨴","lowast":"∗","lowbar":"_","LowerLeftArrow":"↙","LowerRightArrow":"↘","loz":"◊","lozenge":"◊","lozf":"⧫","lpar":"(","lparlt":"⦓","lrarr":"⇆","lrcorner":"⌟","lrhar":"⇋","lrhard":"⥭","lrm":"‎","lrtri":"⊿","lsaquo":"‹","lscr":"𝓁","Lscr":"ℒ","lsh":"↰","Lsh":"↰","lsim":"≲","lsime":"⪍","lsimg":"⪏","lsqb":"[","lsquo":"‘","lsquor":"‚","Lstrok":"Ł","lstrok":"ł","ltcc":"⪦","ltcir":"⩹","lt":"<","LT":"<","Lt":"≪","ltdot":"⋖","lthree":"⋋","ltimes":"⋉","ltlarr":"⥶","ltquest":"⩻","ltri":"◃","ltrie":"⊴","ltrif":"◂","ltrPar":"⦖","lurdshar":"⥊","luruhar":"⥦","lvertneqq":"≨︀","lvnE":"≨︀","macr":"¯","male":"♂","malt":"✠","maltese":"✠","Map":"⤅","map":"↦","mapsto":"↦","mapstodown":"↧","mapstoleft":"↤","mapstoup":"↥","marker":"▮","mcomma":"⨩","Mcy":"М","mcy":"м","mdash":"—","mDDot":"∺","measuredangle":"∡","MediumSpace":" ","Mellintrf":"ℳ","Mfr":"𝔐","mfr":"𝔪","mho":"℧","micro":"µ","midast":"*","midcir":"⫰","mid":"∣","middot":"·","minusb":"⊟","minus":"−","minusd":"∸","minusdu":"⨪","MinusPlus":"∓","mlcp":"⫛","mldr":"…","mnplus":"∓","models":"⊧","Mopf":"𝕄","mopf":"𝕞","mp":"∓","mscr":"𝓂","Mscr":"ℳ","mstpos":"∾","Mu":"Μ","mu":"μ","multimap":"⊸","mumap":"⊸","nabla":"∇","Nacute":"Ń","nacute":"ń","nang":"∠⃒","nap":"≉","napE":"⩰̸","napid":"≋̸","napos":"ŉ","napprox":"≉","natural":"♮","naturals":"ℕ","natur":"♮","nbsp":" ","nbump":"≎̸","nbumpe":"≏̸","ncap":"⩃","Ncaron":"Ň","ncaron":"ň","Ncedil":"Ņ","ncedil":"ņ","ncong":"≇","ncongdot":"⩭̸","ncup":"⩂","Ncy":"Н","ncy":"н","ndash":"–","nearhk":"⤤","nearr":"↗","neArr":"⇗","nearrow":"↗","ne":"≠","nedot":"≐̸","NegativeMediumSpace":"​","NegativeThickSpace":"​","NegativeThinSpace":"​","NegativeVeryThinSpace":"​","nequiv":"≢","nesear":"⤨","nesim":"≂̸","NestedGreaterGreater":"≫","NestedLessLess":"≪","NewLine":"\n","nexist":"∄","nexists":"∄","Nfr":"𝔑","nfr":"𝔫","ngE":"≧̸","nge":"≱","ngeq":"≱","ngeqq":"≧̸","ngeqslant":"⩾̸","nges":"⩾̸","nGg":"⋙̸","ngsim":"≵","nGt":"≫⃒","ngt":"≯","ngtr":"≯","nGtv":"≫̸","nharr":"↮","nhArr":"⇎","nhpar":"⫲","ni":"∋","nis":"⋼","nisd":"⋺","niv":"∋","NJcy":"Њ","njcy":"њ","nlarr":"↚","nlArr":"⇍","nldr":"‥","nlE":"≦̸","nle":"≰","nleftarrow":"↚","nLeftarrow":"⇍","nleftrightarrow":"↮","nLeftrightarrow":"⇎","nleq":"≰","nleqq":"≦̸","nleqslant":"⩽̸","nles":"⩽̸","nless":"≮","nLl":"⋘̸","nlsim":"≴","nLt":"≪⃒","nlt":"≮","nltri":"⋪","nltrie":"⋬","nLtv":"≪̸","nmid":"∤","NoBreak":"⁠","NonBreakingSpace":" ","nopf":"𝕟","Nopf":"ℕ","Not":"⫬","not":"¬","NotCongruent":"≢","NotCupCap":"≭","NotDoubleVerticalBar":"∦","NotElement":"∉","NotEqual":"≠","NotEqualTilde":"≂̸","NotExists":"∄","NotGreater":"≯","NotGreaterEqual":"≱","NotGreaterFullEqual":"≧̸","NotGreaterGreater":"≫̸","NotGreaterLess":"≹","NotGreaterSlantEqual":"⩾̸","NotGreaterTilde":"≵","NotHumpDownHump":"≎̸","NotHumpEqual":"≏̸","notin":"∉","notindot":"⋵̸","notinE":"⋹̸","notinva":"∉","notinvb":"⋷","notinvc":"⋶","NotLeftTriangleBar":"⧏̸","NotLeftTriangle":"⋪","NotLeftTriangleEqual":"⋬","NotLess":"≮","NotLessEqual":"≰","NotLessGreater":"≸","NotLessLess":"≪̸","NotLessSlantEqual":"⩽̸","NotLessTilde":"≴","NotNestedGreaterGreater":"⪢̸","NotNestedLessLess":"⪡̸","notni":"∌","notniva":"∌","notnivb":"⋾","notnivc":"⋽","NotPrecedes":"⊀","NotPrecedesEqual":"⪯̸","NotPrecedesSlantEqual":"⋠","NotReverseElement":"∌","NotRightTriangleBar":"⧐̸","NotRightTriangle":"⋫","NotRightTriangleEqual":"⋭","NotSquareSubset":"⊏̸","NotSquareSubsetEqual":"⋢","NotSquareSuperset":"⊐̸","NotSquareSupersetEqual":"⋣","NotSubset":"⊂⃒","NotSubsetEqual":"⊈","NotSucceeds":"⊁","NotSucceedsEqual":"⪰̸","NotSucceedsSlantEqual":"⋡","NotSucceedsTilde":"≿̸","NotSuperset":"⊃⃒","NotSupersetEqual":"⊉","NotTilde":"≁","NotTildeEqual":"≄","NotTildeFullEqual":"≇","NotTildeTilde":"≉","NotVerticalBar":"∤","nparallel":"∦","npar":"∦","nparsl":"⫽⃥","npart":"∂̸","npolint":"⨔","npr":"⊀","nprcue":"⋠","nprec":"⊀","npreceq":"⪯̸","npre":"⪯̸","nrarrc":"⤳̸","nrarr":"↛","nrArr":"⇏","nrarrw":"↝̸","nrightarrow":"↛","nRightarrow":"⇏","nrtri":"⋫","nrtrie":"⋭","nsc":"⊁","nsccue":"⋡","nsce":"⪰̸","Nscr":"𝒩","nscr":"𝓃","nshortmid":"∤","nshortparallel":"∦","nsim":"≁","nsime":"≄","nsimeq":"≄","nsmid":"∤","nspar":"∦","nsqsube":"⋢","nsqsupe":"⋣","nsub":"⊄","nsubE":"⫅̸","nsube":"⊈","nsubset":"⊂⃒","nsubseteq":"⊈","nsubseteqq":"⫅̸","nsucc":"⊁","nsucceq":"⪰̸","nsup":"⊅","nsupE":"⫆̸","nsupe":"⊉","nsupset":"⊃⃒","nsupseteq":"⊉","nsupseteqq":"⫆̸","ntgl":"≹","Ntilde":"Ñ","ntilde":"ñ","ntlg":"≸","ntriangleleft":"⋪","ntrianglelefteq":"⋬","ntriangleright":"⋫","ntrianglerighteq":"⋭","Nu":"Ν","nu":"ν","num":"#","numero":"№","numsp":" ","nvap":"≍⃒","nvdash":"⊬","nvDash":"⊭","nVdash":"⊮","nVDash":"⊯","nvge":"≥⃒","nvgt":">⃒","nvHarr":"⤄","nvinfin":"⧞","nvlArr":"⤂","nvle":"≤⃒","nvlt":"<⃒","nvltrie":"⊴⃒","nvrArr":"⤃","nvrtrie":"⊵⃒","nvsim":"∼⃒","nwarhk":"⤣","nwarr":"↖","nwArr":"⇖","nwarrow":"↖","nwnear":"⤧","Oacute":"Ó","oacute":"ó","oast":"⊛","Ocirc":"Ô","ocirc":"ô","ocir":"⊚","Ocy":"О","ocy":"о","odash":"⊝","Odblac":"Ő","odblac":"ő","odiv":"⨸","odot":"⊙","odsold":"⦼","OElig":"Œ","oelig":"œ","ofcir":"⦿","Ofr":"𝔒","ofr":"𝔬","ogon":"˛","Ograve":"Ò","ograve":"ò","ogt":"⧁","ohbar":"⦵","ohm":"Ω","oint":"∮","olarr":"↺","olcir":"⦾","olcross":"⦻","oline":"‾","olt":"⧀","Omacr":"Ō","omacr":"ō","Omega":"Ω","omega":"ω","Omicron":"Ο","omicron":"ο","omid":"⦶","ominus":"⊖","Oopf":"𝕆","oopf":"𝕠","opar":"⦷","OpenCurlyDoubleQuote":"“","OpenCurlyQuote":"‘","operp":"⦹","oplus":"⊕","orarr":"↻","Or":"⩔","or":"∨","ord":"⩝","order":"ℴ","orderof":"ℴ","ordf":"ª","ordm":"º","origof":"⊶","oror":"⩖","orslope":"⩗","orv":"⩛","oS":"Ⓢ","Oscr":"𝒪","oscr":"ℴ","Oslash":"Ø","oslash":"ø","osol":"⊘","Otilde":"Õ","otilde":"õ","otimesas":"⨶","Otimes":"⨷","otimes":"⊗","Ouml":"Ö","ouml":"ö","ovbar":"⌽","OverBar":"‾","OverBrace":"⏞","OverBracket":"⎴","OverParenthesis":"⏜","para":"¶","parallel":"∥","par":"∥","parsim":"⫳","parsl":"⫽","part":"∂","PartialD":"∂","Pcy":"П","pcy":"п","percnt":"%","period":".","permil":"‰","perp":"⊥","pertenk":"‱","Pfr":"𝔓","pfr":"𝔭","Phi":"Φ","phi":"φ","phiv":"ϕ","phmmat":"ℳ","phone":"☎","Pi":"Π","pi":"π","pitchfork":"⋔","piv":"ϖ","planck":"ℏ","planckh":"ℎ","plankv":"ℏ","plusacir":"⨣","plusb":"⊞","pluscir":"⨢","plus":"+","plusdo":"∔","plusdu":"⨥","pluse":"⩲","PlusMinus":"±","plusmn":"±","plussim":"⨦","plustwo":"⨧","pm":"±","Poincareplane":"ℌ","pointint":"⨕","popf":"𝕡","Popf":"ℙ","pound":"£","prap":"⪷","Pr":"⪻","pr":"≺","prcue":"≼","precapprox":"⪷","prec":"≺","preccurlyeq":"≼","Precedes":"≺","PrecedesEqual":"⪯","PrecedesSlantEqual":"≼","PrecedesTilde":"≾","preceq":"⪯","precnapprox":"⪹","precneqq":"⪵","precnsim":"⋨","pre":"⪯","prE":"⪳","precsim":"≾","prime":"′","Prime":"″","primes":"ℙ","prnap":"⪹","prnE":"⪵","prnsim":"⋨","prod":"∏","Product":"∏","profalar":"⌮","profline":"⌒","profsurf":"⌓","prop":"∝","Proportional":"∝","Proportion":"∷","propto":"∝","prsim":"≾","prurel":"⊰","Pscr":"𝒫","pscr":"𝓅","Psi":"Ψ","psi":"ψ","puncsp":" ","Qfr":"𝔔","qfr":"𝔮","qint":"⨌","qopf":"𝕢","Qopf":"ℚ","qprime":"⁗","Qscr":"𝒬","qscr":"𝓆","quaternions":"ℍ","quatint":"⨖","quest":"?","questeq":"≟","quot":"\"","QUOT":"\"","rAarr":"⇛","race":"∽̱","Racute":"Ŕ","racute":"ŕ","radic":"√","raemptyv":"⦳","rang":"⟩","Rang":"⟫","rangd":"⦒","range":"⦥","rangle":"⟩","raquo":"»","rarrap":"⥵","rarrb":"⇥","rarrbfs":"⤠","rarrc":"⤳","rarr":"→","Rarr":"↠","rArr":"⇒","rarrfs":"⤞","rarrhk":"↪","rarrlp":"↬","rarrpl":"⥅","rarrsim":"⥴","Rarrtl":"⤖","rarrtl":"↣","rarrw":"↝","ratail":"⤚","rAtail":"⤜","ratio":"∶","rationals":"ℚ","rbarr":"⤍","rBarr":"⤏","RBarr":"⤐","rbbrk":"❳","rbrace":"}","rbrack":"]","rbrke":"⦌","rbrksld":"⦎","rbrkslu":"⦐","Rcaron":"Ř","rcaron":"ř","Rcedil":"Ŗ","rcedil":"ŗ","rceil":"⌉","rcub":"}","Rcy":"Р","rcy":"р","rdca":"⤷","rdldhar":"⥩","rdquo":"”","rdquor":"”","rdsh":"↳","real":"ℜ","realine":"ℛ","realpart":"ℜ","reals":"ℝ","Re":"ℜ","rect":"▭","reg":"®","REG":"®","ReverseElement":"∋","ReverseEquilibrium":"⇋","ReverseUpEquilibrium":"⥯","rfisht":"⥽","rfloor":"⌋","rfr":"𝔯","Rfr":"ℜ","rHar":"⥤","rhard":"⇁","rharu":"⇀","rharul":"⥬","Rho":"Ρ","rho":"ρ","rhov":"ϱ","RightAngleBracket":"⟩","RightArrowBar":"⇥","rightarrow":"→","RightArrow":"→","Rightarrow":"⇒","RightArrowLeftArrow":"⇄","rightarrowtail":"↣","RightCeiling":"⌉","RightDoubleBracket":"⟧","RightDownTeeVector":"⥝","RightDownVectorBar":"⥕","RightDownVector":"⇂","RightFloor":"⌋","rightharpoondown":"⇁","rightharpoonup":"⇀","rightleftarrows":"⇄","rightleftharpoons":"⇌","rightrightarrows":"⇉","rightsquigarrow":"↝","RightTeeArrow":"↦","RightTee":"⊢","RightTeeVector":"⥛","rightthreetimes":"⋌","RightTriangleBar":"⧐","RightTriangle":"⊳","RightTriangleEqual":"⊵","RightUpDownVector":"⥏","RightUpTeeVector":"⥜","RightUpVectorBar":"⥔","RightUpVector":"↾","RightVectorBar":"⥓","RightVector":"⇀","ring":"˚","risingdotseq":"≓","rlarr":"⇄","rlhar":"⇌","rlm":"‏","rmoustache":"⎱","rmoust":"⎱","rnmid":"⫮","roang":"⟭","roarr":"⇾","robrk":"⟧","ropar":"⦆","ropf":"𝕣","Ropf":"ℝ","roplus":"⨮","rotimes":"⨵","RoundImplies":"⥰","rpar":")","rpargt":"⦔","rppolint":"⨒","rrarr":"⇉","Rrightarrow":"⇛","rsaquo":"›","rscr":"𝓇","Rscr":"ℛ","rsh":"↱","Rsh":"↱","rsqb":"]","rsquo":"’","rsquor":"’","rthree":"⋌","rtimes":"⋊","rtri":"▹","rtrie":"⊵","rtrif":"▸","rtriltri":"⧎","RuleDelayed":"⧴","ruluhar":"⥨","rx":"℞","Sacute":"Ś","sacute":"ś","sbquo":"‚","scap":"⪸","Scaron":"Š","scaron":"š","Sc":"⪼","sc":"≻","sccue":"≽","sce":"⪰","scE":"⪴","Scedil":"Ş","scedil":"ş","Scirc":"Ŝ","scirc":"ŝ","scnap":"⪺","scnE":"⪶","scnsim":"⋩","scpolint":"⨓","scsim":"≿","Scy":"С","scy":"с","sdotb":"⊡","sdot":"⋅","sdote":"⩦","searhk":"⤥","searr":"↘","seArr":"⇘","searrow":"↘","sect":"§","semi":";","seswar":"⤩","setminus":"∖","setmn":"∖","sext":"✶","Sfr":"𝔖","sfr":"𝔰","sfrown":"⌢","sharp":"♯","SHCHcy":"Щ","shchcy":"щ","SHcy":"Ш","shcy":"ш","ShortDownArrow":"↓","ShortLeftArrow":"←","shortmid":"∣","shortparallel":"∥","ShortRightArrow":"→","ShortUpArrow":"↑","shy":"­","Sigma":"Σ","sigma":"σ","sigmaf":"ς","sigmav":"ς","sim":"∼","simdot":"⩪","sime":"≃","simeq":"≃","simg":"⪞","simgE":"⪠","siml":"⪝","simlE":"⪟","simne":"≆","simplus":"⨤","simrarr":"⥲","slarr":"←","SmallCircle":"∘","smallsetminus":"∖","smashp":"⨳","smeparsl":"⧤","smid":"∣","smile":"⌣","smt":"⪪","smte":"⪬","smtes":"⪬︀","SOFTcy":"Ь","softcy":"ь","solbar":"⌿","solb":"⧄","sol":"/","Sopf":"𝕊","sopf":"𝕤","spades":"♠","spadesuit":"♠","spar":"∥","sqcap":"⊓","sqcaps":"⊓︀","sqcup":"⊔","sqcups":"⊔︀","Sqrt":"√","sqsub":"⊏","sqsube":"⊑","sqsubset":"⊏","sqsubseteq":"⊑","sqsup":"⊐","sqsupe":"⊒","sqsupset":"⊐","sqsupseteq":"⊒","square":"□","Square":"□","SquareIntersection":"⊓","SquareSubset":"⊏","SquareSubsetEqual":"⊑","SquareSuperset":"⊐","SquareSupersetEqual":"⊒","SquareUnion":"⊔","squarf":"▪","squ":"□","squf":"▪","srarr":"→","Sscr":"𝒮","sscr":"𝓈","ssetmn":"∖","ssmile":"⌣","sstarf":"⋆","Star":"⋆","star":"☆","starf":"★","straightepsilon":"ϵ","straightphi":"ϕ","strns":"¯","sub":"⊂","Sub":"⋐","subdot":"⪽","subE":"⫅","sube":"⊆","subedot":"⫃","submult":"⫁","subnE":"⫋","subne":"⊊","subplus":"⪿","subrarr":"⥹","subset":"⊂","Subset":"⋐","subseteq":"⊆","subseteqq":"⫅","SubsetEqual":"⊆","subsetneq":"⊊","subsetneqq":"⫋","subsim":"⫇","subsub":"⫕","subsup":"⫓","succapprox":"⪸","succ":"≻","succcurlyeq":"≽","Succeeds":"≻","SucceedsEqual":"⪰","SucceedsSlantEqual":"≽","SucceedsTilde":"≿","succeq":"⪰","succnapprox":"⪺","succneqq":"⪶","succnsim":"⋩","succsim":"≿","SuchThat":"∋","sum":"∑","Sum":"∑","sung":"♪","sup1":"¹","sup2":"²","sup3":"³","sup":"⊃","Sup":"⋑","supdot":"⪾","supdsub":"⫘","supE":"⫆","supe":"⊇","supedot":"⫄","Superset":"⊃","SupersetEqual":"⊇","suphsol":"⟉","suphsub":"⫗","suplarr":"⥻","supmult":"⫂","supnE":"⫌","supne":"⊋","supplus":"⫀","supset":"⊃","Supset":"⋑","supseteq":"⊇","supseteqq":"⫆","supsetneq":"⊋","supsetneqq":"⫌","supsim":"⫈","supsub":"⫔","supsup":"⫖","swarhk":"⤦","swarr":"↙","swArr":"⇙","swarrow":"↙","swnwar":"⤪","szlig":"ß","Tab":"\t","target":"⌖","Tau":"Τ","tau":"τ","tbrk":"⎴","Tcaron":"Ť","tcaron":"ť","Tcedil":"Ţ","tcedil":"ţ","Tcy":"Т","tcy":"т","tdot":"⃛","telrec":"⌕","Tfr":"𝔗","tfr":"𝔱","there4":"∴","therefore":"∴","Therefore":"∴","Theta":"Θ","theta":"θ","thetasym":"ϑ","thetav":"ϑ","thickapprox":"≈","thicksim":"∼","ThickSpace":"  ","ThinSpace":" ","thinsp":" ","thkap":"≈","thksim":"∼","THORN":"Þ","thorn":"þ","tilde":"˜","Tilde":"∼","TildeEqual":"≃","TildeFullEqual":"≅","TildeTilde":"≈","timesbar":"⨱","timesb":"⊠","times":"×","timesd":"⨰","tint":"∭","toea":"⤨","topbot":"⌶","topcir":"⫱","top":"⊤","Topf":"𝕋","topf":"𝕥","topfork":"⫚","tosa":"⤩","tprime":"‴","trade":"™","TRADE":"™","triangle":"▵","triangledown":"▿","triangleleft":"◃","trianglelefteq":"⊴","triangleq":"≜","triangleright":"▹","trianglerighteq":"⊵","tridot":"◬","trie":"≜","triminus":"⨺","TripleDot":"⃛","triplus":"⨹","trisb":"⧍","tritime":"⨻","trpezium":"⏢","Tscr":"𝒯","tscr":"𝓉","TScy":"Ц","tscy":"ц","TSHcy":"Ћ","tshcy":"ћ","Tstrok":"Ŧ","tstrok":"ŧ","twixt":"≬","twoheadleftarrow":"↞","twoheadrightarrow":"↠","Uacute":"Ú","uacute":"ú","uarr":"↑","Uarr":"↟","uArr":"⇑","Uarrocir":"⥉","Ubrcy":"Ў","ubrcy":"ў","Ubreve":"Ŭ","ubreve":"ŭ","Ucirc":"Û","ucirc":"û","Ucy":"У","ucy":"у","udarr":"⇅","Udblac":"Ű","udblac":"ű","udhar":"⥮","ufisht":"⥾","Ufr":"𝔘","ufr":"𝔲","Ugrave":"Ù","ugrave":"ù","uHar":"⥣","uharl":"↿","uharr":"↾","uhblk":"▀","ulcorn":"⌜","ulcorner":"⌜","ulcrop":"⌏","ultri":"◸","Umacr":"Ū","umacr":"ū","uml":"¨","UnderBar":"_","UnderBrace":"⏟","UnderBracket":"⎵","UnderParenthesis":"⏝","Union":"⋃","UnionPlus":"⊎","Uogon":"Ų","uogon":"ų","Uopf":"𝕌","uopf":"𝕦","UpArrowBar":"⤒","uparrow":"↑","UpArrow":"↑","Uparrow":"⇑","UpArrowDownArrow":"⇅","updownarrow":"↕","UpDownArrow":"↕","Updownarrow":"⇕","UpEquilibrium":"⥮","upharpoonleft":"↿","upharpoonright":"↾","uplus":"⊎","UpperLeftArrow":"↖","UpperRightArrow":"↗","upsi":"υ","Upsi":"ϒ","upsih":"ϒ","Upsilon":"Υ","upsilon":"υ","UpTeeArrow":"↥","UpTee":"⊥","upuparrows":"⇈","urcorn":"⌝","urcorner":"⌝","urcrop":"⌎","Uring":"Ů","uring":"ů","urtri":"◹","Uscr":"𝒰","uscr":"𝓊","utdot":"⋰","Utilde":"Ũ","utilde":"ũ","utri":"▵","utrif":"▴","uuarr":"⇈","Uuml":"Ü","uuml":"ü","uwangle":"⦧","vangrt":"⦜","varepsilon":"ϵ","varkappa":"ϰ","varnothing":"∅","varphi":"ϕ","varpi":"ϖ","varpropto":"∝","varr":"↕","vArr":"⇕","varrho":"ϱ","varsigma":"ς","varsubsetneq":"⊊︀","varsubsetneqq":"⫋︀","varsupsetneq":"⊋︀","varsupsetneqq":"⫌︀","vartheta":"ϑ","vartriangleleft":"⊲","vartriangleright":"⊳","vBar":"⫨","Vbar":"⫫","vBarv":"⫩","Vcy":"В","vcy":"в","vdash":"⊢","vDash":"⊨","Vdash":"⊩","VDash":"⊫","Vdashl":"⫦","veebar":"⊻","vee":"∨","Vee":"⋁","veeeq":"≚","vellip":"⋮","verbar":"|","Verbar":"‖","vert":"|","Vert":"‖","VerticalBar":"∣","VerticalLine":"|","VerticalSeparator":"❘","VerticalTilde":"≀","VeryThinSpace":" ","Vfr":"𝔙","vfr":"𝔳","vltri":"⊲","vnsub":"⊂⃒","vnsup":"⊃⃒","Vopf":"𝕍","vopf":"𝕧","vprop":"∝","vrtri":"⊳","Vscr":"𝒱","vscr":"𝓋","vsubnE":"⫋︀","vsubne":"⊊︀","vsupnE":"⫌︀","vsupne":"⊋︀","Vvdash":"⊪","vzigzag":"⦚","Wcirc":"Ŵ","wcirc":"ŵ","wedbar":"⩟","wedge":"∧","Wedge":"⋀","wedgeq":"≙","weierp":"℘","Wfr":"𝔚","wfr":"𝔴","Wopf":"𝕎","wopf":"𝕨","wp":"℘","wr":"≀","wreath":"≀","Wscr":"𝒲","wscr":"𝓌","xcap":"⋂","xcirc":"◯","xcup":"⋃","xdtri":"▽","Xfr":"𝔛","xfr":"𝔵","xharr":"⟷","xhArr":"⟺","Xi":"Ξ","xi":"ξ","xlarr":"⟵","xlArr":"⟸","xmap":"⟼","xnis":"⋻","xodot":"⨀","Xopf":"𝕏","xopf":"𝕩","xoplus":"⨁","xotime":"⨂","xrarr":"⟶","xrArr":"⟹","Xscr":"𝒳","xscr":"𝓍","xsqcup":"⨆","xuplus":"⨄","xutri":"△","xvee":"⋁","xwedge":"⋀","Yacute":"Ý","yacute":"ý","YAcy":"Я","yacy":"я","Ycirc":"Ŷ","ycirc":"ŷ","Ycy":"Ы","ycy":"ы","yen":"¥","Yfr":"𝔜","yfr":"𝔶","YIcy":"Ї","yicy":"ї","Yopf":"𝕐","yopf":"𝕪","Yscr":"𝒴","yscr":"𝓎","YUcy":"Ю","yucy":"ю","yuml":"ÿ","Yuml":"Ÿ","Zacute":"Ź","zacute":"ź","Zcaron":"Ž","zcaron":"ž","Zcy":"З","zcy":"з","Zdot":"Ż","zdot":"ż","zeetrf":"ℨ","ZeroWidthSpace":"​","Zeta":"Ζ","zeta":"ζ","zfr":"𝔷","Zfr":"ℨ","ZHcy":"Ж","zhcy":"ж","zigrarr":"⇝","zopf":"𝕫","Zopf":"ℤ","Zscr":"𝒵","zscr":"𝓏","zwj":"‍","zwnj":"‌"}
 
 /***/ }),
-/* 335 */
+/* 331 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -72321,7 +72486,7 @@ module.exports = encode;
 
 
 /***/ }),
-/* 336 */
+/* 332 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -72450,7 +72615,7 @@ module.exports = decode;
 
 
 /***/ }),
-/* 337 */
+/* 333 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -72482,7 +72647,7 @@ module.exports = function format(url) {
 
 
 /***/ }),
-/* 338 */
+/* 334 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -72801,27 +72966,27 @@ module.exports = urlParse;
 
 
 /***/ }),
-/* 339 */
+/* 335 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-exports.Any = __webpack_require__(291);
-exports.Cc  = __webpack_require__(292);
-exports.Cf  = __webpack_require__(340);
-exports.P   = __webpack_require__(274);
-exports.Z   = __webpack_require__(293);
+exports.Any = __webpack_require__(182);
+exports.Cc  = __webpack_require__(183);
+exports.Cf  = __webpack_require__(336);
+exports.P   = __webpack_require__(32);
+exports.Z   = __webpack_require__(184);
 
 
 /***/ }),
-/* 340 */
+/* 336 */
 /***/ (function(module, exports) {
 
 module.exports=/[\xAD\u0600-\u0605\u061C\u06DD\u070F\u08E2\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF\uFFF9-\uFFFB]|\uD804\uDCBD|\uD82F[\uDCA0-\uDCA3]|\uD834[\uDD73-\uDD7A]|\uDB40[\uDC01\uDC20-\uDC7F]/
 
 /***/ }),
-/* 341 */
+/* 337 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -72829,13 +72994,13 @@ module.exports=/[\xAD\u0600-\u0605\u061C\u06DD\u070F\u08E2\u180E\u200B-\u200F\u2
 
 
 
-exports.parseLinkLabel       = __webpack_require__(275);
-exports.parseLinkDestination = __webpack_require__(262);
-exports.parseLinkTitle       = __webpack_require__(263);
+exports.parseLinkLabel       = __webpack_require__(33);
+exports.parseLinkDestination = __webpack_require__(19);
+exports.parseLinkTitle       = __webpack_require__(20);
 
 
 /***/ }),
-/* 342 */
+/* 338 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -72849,9 +73014,9 @@ exports.parseLinkTitle       = __webpack_require__(263);
 
 
 
-var assign          = __webpack_require__(250).assign;
-var unescapeAll     = __webpack_require__(250).unescapeAll;
-var escapeHtml      = __webpack_require__(250).escapeHtml;
+var assign          = __webpack_require__(1).assign;
+var unescapeAll     = __webpack_require__(1).unescapeAll;
+var escapeHtml      = __webpack_require__(1).escapeHtml;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73179,7 +73344,7 @@ module.exports = Renderer;
 
 
 /***/ }),
-/* 343 */
+/* 339 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73192,16 +73357,16 @@ module.exports = Renderer;
 
 
 
-var Ruler  = __webpack_require__(276);
+var Ruler  = __webpack_require__(34);
 
 
 var _rules = [
-  [ 'normalize',      __webpack_require__(344)      ],
-  [ 'block',          __webpack_require__(345)          ],
-  [ 'inline',         __webpack_require__(346)         ],
-  [ 'linkify',        __webpack_require__(347)        ],
-  [ 'replacements',   __webpack_require__(348)   ],
-  [ 'smartquotes',    __webpack_require__(349)    ]
+  [ 'normalize',      __webpack_require__(340)      ],
+  [ 'block',          __webpack_require__(341)          ],
+  [ 'inline',         __webpack_require__(342)         ],
+  [ 'linkify',        __webpack_require__(343)        ],
+  [ 'replacements',   __webpack_require__(344)   ],
+  [ 'smartquotes',    __webpack_require__(345)    ]
 ];
 
 
@@ -73237,14 +73402,14 @@ Core.prototype.process = function (state) {
   }
 };
 
-Core.prototype.State = __webpack_require__(350);
+Core.prototype.State = __webpack_require__(346);
 
 
 module.exports = Core;
 
 
 /***/ }),
-/* 344 */
+/* 340 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73271,7 +73436,7 @@ module.exports = function inline(state) {
 
 
 /***/ }),
-/* 345 */
+/* 341 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73294,7 +73459,7 @@ module.exports = function block(state) {
 
 
 /***/ }),
-/* 346 */
+/* 342 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73314,7 +73479,7 @@ module.exports = function inline(state) {
 
 
 /***/ }),
-/* 347 */
+/* 343 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73325,7 +73490,7 @@ module.exports = function inline(state) {
 
 
 
-var arrayReplaceAt = __webpack_require__(250).arrayReplaceAt;
+var arrayReplaceAt = __webpack_require__(1).arrayReplaceAt;
 
 
 function isLinkOpen(str) {
@@ -73454,7 +73619,7 @@ module.exports = function linkify(state) {
 
 
 /***/ }),
-/* 348 */
+/* 344 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73550,7 +73715,7 @@ module.exports = function replace(state) {
 
 
 /***/ }),
-/* 349 */
+/* 345 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73559,9 +73724,9 @@ module.exports = function replace(state) {
 
 
 
-var isWhiteSpace   = __webpack_require__(250).isWhiteSpace;
-var isPunctChar    = __webpack_require__(250).isPunctChar;
-var isMdAsciiPunct = __webpack_require__(250).isMdAsciiPunct;
+var isWhiteSpace   = __webpack_require__(1).isWhiteSpace;
+var isPunctChar    = __webpack_require__(1).isPunctChar;
+var isMdAsciiPunct = __webpack_require__(1).isMdAsciiPunct;
 
 var QUOTE_TEST_RE = /['"]/;
 var QUOTE_RE = /['"]/g;
@@ -73750,7 +73915,7 @@ module.exports = function smartquotes(state) {
 
 
 /***/ }),
-/* 350 */
+/* 346 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73758,7 +73923,7 @@ module.exports = function smartquotes(state) {
 //
 
 
-var Token = __webpack_require__(277);
+var Token = __webpack_require__(35);
 
 
 function StateCore(src, md, env) {
@@ -73777,7 +73942,7 @@ module.exports = StateCore;
 
 
 /***/ }),
-/* 351 */
+/* 347 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -73789,23 +73954,23 @@ module.exports = StateCore;
 
 
 
-var Ruler           = __webpack_require__(276);
+var Ruler           = __webpack_require__(34);
 
 
 var _rules = [
   // First 2 params - rule name & source. Secondary array - list of rules,
   // which can be terminated by this one.
-  [ 'table',      __webpack_require__(352),      [ 'paragraph', 'reference' ] ],
-  [ 'code',       __webpack_require__(353) ],
-  [ 'fence',      __webpack_require__(354),      [ 'paragraph', 'reference', 'blockquote', 'list' ] ],
-  [ 'blockquote', __webpack_require__(355), [ 'paragraph', 'reference', 'list' ] ],
-  [ 'hr',         __webpack_require__(356),         [ 'paragraph', 'reference', 'blockquote', 'list' ] ],
-  [ 'list',       __webpack_require__(357),       [ 'paragraph', 'reference', 'blockquote' ] ],
-  [ 'reference',  __webpack_require__(358) ],
-  [ 'heading',    __webpack_require__(359),    [ 'paragraph', 'reference', 'blockquote' ] ],
-  [ 'lheading',   __webpack_require__(360) ],
-  [ 'html_block', __webpack_require__(361), [ 'paragraph', 'reference', 'blockquote' ] ],
-  [ 'paragraph',  __webpack_require__(363) ]
+  [ 'table',      __webpack_require__(348),      [ 'paragraph', 'reference' ] ],
+  [ 'code',       __webpack_require__(349) ],
+  [ 'fence',      __webpack_require__(350),      [ 'paragraph', 'reference', 'blockquote', 'list' ] ],
+  [ 'blockquote', __webpack_require__(351), [ 'paragraph', 'reference', 'list' ] ],
+  [ 'hr',         __webpack_require__(352),         [ 'paragraph', 'reference', 'blockquote', 'list' ] ],
+  [ 'list',       __webpack_require__(353),       [ 'paragraph', 'reference', 'blockquote' ] ],
+  [ 'reference',  __webpack_require__(354) ],
+  [ 'heading',    __webpack_require__(355),    [ 'paragraph', 'reference', 'blockquote' ] ],
+  [ 'lheading',   __webpack_require__(356) ],
+  [ 'html_block', __webpack_require__(357), [ 'paragraph', 'reference', 'blockquote' ] ],
+  [ 'paragraph',  __webpack_require__(359) ]
 ];
 
 
@@ -73902,14 +74067,14 @@ ParserBlock.prototype.parse = function (src, md, env, outTokens) {
 };
 
 
-ParserBlock.prototype.State = __webpack_require__(364);
+ParserBlock.prototype.State = __webpack_require__(360);
 
 
 module.exports = ParserBlock;
 
 
 /***/ }),
-/* 352 */
+/* 348 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -74090,7 +74255,7 @@ module.exports = function table(state, startLine, endLine, silent) {
 
 
 /***/ }),
-/* 353 */
+/* 349 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -74141,7 +74306,7 @@ module.exports = function code(state, startLine, endLine/*, silent*/) {
 
 
 /***/ }),
-/* 354 */
+/* 350 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -74239,7 +74404,7 @@ module.exports = function fence(state, startLine, endLine, silent) {
 
 
 /***/ }),
-/* 355 */
+/* 351 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -74247,7 +74412,7 @@ module.exports = function fence(state, startLine, endLine, silent) {
 
 
 
-var isSpace = __webpack_require__(250).isSpace;
+var isSpace = __webpack_require__(1).isSpace;
 
 
 module.exports = function blockquote(state, startLine, endLine, silent) {
@@ -74420,7 +74585,7 @@ module.exports = function blockquote(state, startLine, endLine, silent) {
 
 
 /***/ }),
-/* 356 */
+/* 352 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -74428,7 +74593,7 @@ module.exports = function blockquote(state, startLine, endLine, silent) {
 
 
 
-var isSpace = __webpack_require__(250).isSpace;
+var isSpace = __webpack_require__(1).isSpace;
 
 
 module.exports = function hr(state, startLine, endLine, silent) {
@@ -74469,7 +74634,7 @@ module.exports = function hr(state, startLine, endLine, silent) {
 
 
 /***/ }),
-/* 357 */
+/* 353 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -74477,7 +74642,7 @@ module.exports = function hr(state, startLine, endLine, silent) {
 
 
 
-var isSpace = __webpack_require__(250).isSpace;
+var isSpace = __webpack_require__(1).isSpace;
 
 
 // Search `[-+*][\n ]`, returns next pos arter marker on success
@@ -74786,17 +74951,17 @@ module.exports = function list(state, startLine, endLine, silent) {
 
 
 /***/ }),
-/* 358 */
+/* 354 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
 
-var parseLinkDestination = __webpack_require__(262);
-var parseLinkTitle       = __webpack_require__(263);
-var normalizeReference   = __webpack_require__(250).normalizeReference;
-var isSpace              = __webpack_require__(250).isSpace;
+var parseLinkDestination = __webpack_require__(19);
+var parseLinkTitle       = __webpack_require__(20);
+var normalizeReference   = __webpack_require__(1).normalizeReference;
+var isSpace              = __webpack_require__(1).isSpace;
 
 
 module.exports = function reference(state, startLine, _endLine, silent) {
@@ -74984,7 +75149,7 @@ module.exports = function reference(state, startLine, _endLine, silent) {
 
 
 /***/ }),
-/* 359 */
+/* 355 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -74992,7 +75157,7 @@ module.exports = function reference(state, startLine, _endLine, silent) {
 
 
 
-var isSpace = __webpack_require__(250).isSpace;
+var isSpace = __webpack_require__(1).isSpace;
 
 
 module.exports = function heading(state, startLine, endLine, silent) {
@@ -75043,7 +75208,7 @@ module.exports = function heading(state, startLine, endLine, silent) {
 
 
 /***/ }),
-/* 360 */
+/* 356 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75125,7 +75290,7 @@ module.exports = function lheading(state, startLine, endLine/*, silent*/) {
 
 
 /***/ }),
-/* 361 */
+/* 357 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75134,8 +75299,8 @@ module.exports = function lheading(state, startLine, endLine/*, silent*/) {
 
 
 
-var block_names = __webpack_require__(362);
-var HTML_OPEN_CLOSE_TAG_RE = __webpack_require__(294).HTML_OPEN_CLOSE_TAG_RE;
+var block_names = __webpack_require__(358);
+var HTML_OPEN_CLOSE_TAG_RE = __webpack_require__(185).HTML_OPEN_CLOSE_TAG_RE;
 
 // An array of opening and corresponding closing sequences for html tags,
 // last argument defines whether it can terminate a paragraph or not
@@ -75203,7 +75368,7 @@ module.exports = function html_block(state, startLine, endLine, silent) {
 
 
 /***/ }),
-/* 362 */
+/* 358 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75278,7 +75443,7 @@ module.exports = [
 
 
 /***/ }),
-/* 363 */
+/* 359 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75332,7 +75497,7 @@ module.exports = function paragraph(state, startLine/*, endLine*/) {
 
 
 /***/ }),
-/* 364 */
+/* 360 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75340,8 +75505,8 @@ module.exports = function paragraph(state, startLine/*, endLine*/) {
 
 
 
-var Token = __webpack_require__(277);
-var isSpace = __webpack_require__(250).isSpace;
+var Token = __webpack_require__(35);
+var isSpace = __webpack_require__(1).isSpace;
 
 
 function StateBlock(src, md, env, tokens) {
@@ -75546,7 +75711,7 @@ module.exports = StateBlock;
 
 
 /***/ }),
-/* 365 */
+/* 361 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75558,31 +75723,31 @@ module.exports = StateBlock;
 
 
 
-var Ruler           = __webpack_require__(276);
+var Ruler           = __webpack_require__(34);
 
 
 ////////////////////////////////////////////////////////////////////////////////
 // Parser rules
 
 var _rules = [
-  [ 'text',            __webpack_require__(366) ],
-  [ 'newline',         __webpack_require__(367) ],
-  [ 'escape',          __webpack_require__(368) ],
-  [ 'backticks',       __webpack_require__(369) ],
-  [ 'strikethrough',   __webpack_require__(295).tokenize ],
-  [ 'emphasis',        __webpack_require__(296).tokenize ],
-  [ 'link',            __webpack_require__(370) ],
-  [ 'image',           __webpack_require__(371) ],
-  [ 'autolink',        __webpack_require__(372) ],
-  [ 'html_inline',     __webpack_require__(373) ],
-  [ 'entity',          __webpack_require__(374) ]
+  [ 'text',            __webpack_require__(362) ],
+  [ 'newline',         __webpack_require__(363) ],
+  [ 'escape',          __webpack_require__(364) ],
+  [ 'backticks',       __webpack_require__(365) ],
+  [ 'strikethrough',   __webpack_require__(186).tokenize ],
+  [ 'emphasis',        __webpack_require__(187).tokenize ],
+  [ 'link',            __webpack_require__(366) ],
+  [ 'image',           __webpack_require__(367) ],
+  [ 'autolink',        __webpack_require__(368) ],
+  [ 'html_inline',     __webpack_require__(369) ],
+  [ 'entity',          __webpack_require__(370) ]
 ];
 
 var _rules2 = [
-  [ 'balance_pairs',   __webpack_require__(375) ],
-  [ 'strikethrough',   __webpack_require__(295).postProcess ],
-  [ 'emphasis',        __webpack_require__(296).postProcess ],
-  [ 'text_collapse',   __webpack_require__(376) ]
+  [ 'balance_pairs',   __webpack_require__(371) ],
+  [ 'strikethrough',   __webpack_require__(186).postProcess ],
+  [ 'emphasis',        __webpack_require__(187).postProcess ],
+  [ 'text_collapse',   __webpack_require__(372) ]
 ];
 
 
@@ -75723,14 +75888,14 @@ ParserInline.prototype.parse = function (str, md, env, outTokens) {
 };
 
 
-ParserInline.prototype.State = __webpack_require__(377);
+ParserInline.prototype.State = __webpack_require__(373);
 
 
 module.exports = ParserInline;
 
 
 /***/ }),
-/* 366 */
+/* 362 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75826,7 +75991,7 @@ module.exports = function text(state, silent) {
 
 
 /***/ }),
-/* 367 */
+/* 363 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75872,7 +76037,7 @@ module.exports = function newline(state, silent) {
 
 
 /***/ }),
-/* 368 */
+/* 364 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75880,7 +76045,7 @@ module.exports = function newline(state, silent) {
 
 
 
-var isSpace = __webpack_require__(250).isSpace;
+var isSpace = __webpack_require__(1).isSpace;
 
 var ESCAPED = [];
 
@@ -75931,7 +76096,7 @@ module.exports = function escape(state, silent) {
 
 
 /***/ }),
-/* 369 */
+/* 365 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75981,7 +76146,7 @@ module.exports = function backtick(state, silent) {
 
 
 /***/ }),
-/* 370 */
+/* 366 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -75989,11 +76154,11 @@ module.exports = function backtick(state, silent) {
 
 
 
-var parseLinkLabel       = __webpack_require__(275);
-var parseLinkDestination = __webpack_require__(262);
-var parseLinkTitle       = __webpack_require__(263);
-var normalizeReference   = __webpack_require__(250).normalizeReference;
-var isSpace              = __webpack_require__(250).isSpace;
+var parseLinkLabel       = __webpack_require__(33);
+var parseLinkDestination = __webpack_require__(19);
+var parseLinkTitle       = __webpack_require__(20);
+var normalizeReference   = __webpack_require__(1).normalizeReference;
+var isSpace              = __webpack_require__(1).isSpace;
 
 
 module.exports = function link(state, silent) {
@@ -76135,7 +76300,7 @@ module.exports = function link(state, silent) {
 
 
 /***/ }),
-/* 371 */
+/* 367 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -76143,11 +76308,11 @@ module.exports = function link(state, silent) {
 
 
 
-var parseLinkLabel       = __webpack_require__(275);
-var parseLinkDestination = __webpack_require__(262);
-var parseLinkTitle       = __webpack_require__(263);
-var normalizeReference   = __webpack_require__(250).normalizeReference;
-var isSpace              = __webpack_require__(250).isSpace;
+var parseLinkLabel       = __webpack_require__(33);
+var parseLinkDestination = __webpack_require__(19);
+var parseLinkTitle       = __webpack_require__(20);
+var normalizeReference   = __webpack_require__(1).normalizeReference;
+var isSpace              = __webpack_require__(1).isSpace;
 
 
 module.exports = function image(state, silent) {
@@ -76297,7 +76462,7 @@ module.exports = function image(state, silent) {
 
 
 /***/ }),
-/* 372 */
+/* 368 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -76376,7 +76541,7 @@ module.exports = function autolink(state, silent) {
 
 
 /***/ }),
-/* 373 */
+/* 369 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -76385,7 +76550,7 @@ module.exports = function autolink(state, silent) {
 
 
 
-var HTML_TAG_RE = __webpack_require__(294).HTML_TAG_RE;
+var HTML_TAG_RE = __webpack_require__(185).HTML_TAG_RE;
 
 
 function isLetter(ch) {
@@ -76430,7 +76595,7 @@ module.exports = function html_inline(state, silent) {
 
 
 /***/ }),
-/* 374 */
+/* 370 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -76438,10 +76603,10 @@ module.exports = function html_inline(state, silent) {
 
 
 
-var entities          = __webpack_require__(289);
-var has               = __webpack_require__(250).has;
-var isValidEntityCode = __webpack_require__(250).isValidEntityCode;
-var fromCodePoint     = __webpack_require__(250).fromCodePoint;
+var entities          = __webpack_require__(180);
+var has               = __webpack_require__(1).has;
+var isValidEntityCode = __webpack_require__(1).isValidEntityCode;
+var fromCodePoint     = __webpack_require__(1).fromCodePoint;
 
 
 var DIGITAL_RE = /^&#((?:x[a-f0-9]{1,8}|[0-9]{1,8}));/i;
@@ -76485,7 +76650,7 @@ module.exports = function entity(state, silent) {
 
 
 /***/ }),
-/* 375 */
+/* 371 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -76528,7 +76693,7 @@ module.exports = function link_pairs(state) {
 
 
 /***/ }),
-/* 376 */
+/* 372 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -76568,7 +76733,7 @@ module.exports = function text_collapse(state) {
 
 
 /***/ }),
-/* 377 */
+/* 373 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -76577,10 +76742,10 @@ module.exports = function text_collapse(state) {
 
 
 
-var Token          = __webpack_require__(277);
-var isWhiteSpace   = __webpack_require__(250).isWhiteSpace;
-var isPunctChar    = __webpack_require__(250).isPunctChar;
-var isMdAsciiPunct = __webpack_require__(250).isMdAsciiPunct;
+var Token          = __webpack_require__(35);
+var isWhiteSpace   = __webpack_require__(1).isWhiteSpace;
+var isPunctChar    = __webpack_require__(1).isPunctChar;
+var isMdAsciiPunct = __webpack_require__(1).isMdAsciiPunct;
 
 
 function StateInline(src, md, env, outTokens) {
@@ -76705,7 +76870,7 @@ module.exports = StateInline;
 
 
 /***/ }),
-/* 378 */
+/* 374 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -76861,7 +77026,7 @@ function createNormalizer() {
 function compile(self) {
 
   // Load & clone RE patterns.
-  var re = self.re = assign({}, __webpack_require__(379));
+  var re = self.re = assign({}, __webpack_require__(375));
 
   // Define dynamic patterns
   var tlds = self.__tlds__.slice();
@@ -77338,17 +77503,17 @@ module.exports = LinkifyIt;
 
 
 /***/ }),
-/* 379 */
+/* 375 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
 // Use direct extract instead of `regenerate` to reduse browserified size
-var src_Any = exports.src_Any = __webpack_require__(291).source;
-var src_Cc  = exports.src_Cc = __webpack_require__(292).source;
-var src_Z   = exports.src_Z  = __webpack_require__(293).source;
-var src_P   = exports.src_P  = __webpack_require__(274).source;
+var src_Any = exports.src_Any = __webpack_require__(182).source;
+var src_Cc  = exports.src_Cc = __webpack_require__(183).source;
+var src_Z   = exports.src_Z  = __webpack_require__(184).source;
+var src_P   = exports.src_P  = __webpack_require__(32).source;
 
 // \p{\Z\P\Cc\CF} (white spaces + control + format + punctuation)
 var src_ZPCc = exports.src_ZPCc = [ src_Z, src_P, src_Cc ].join('|');
@@ -77507,7 +77672,7 @@ exports.tpl_link_no_ip_fuzzy =
 
 
 /***/ }),
-/* 380 */
+/* 376 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(module, global) {var __WEBPACK_AMD_DEFINE_RESULT__;/*! https://mths.be/punycode v1.4.1 by @mathias */
@@ -78043,10 +78208,10 @@ exports.tpl_link_no_ip_fuzzy =
 
 }(this));
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(6)(module), __webpack_require__(5)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)(module), __webpack_require__(10)))
 
 /***/ }),
-/* 381 */
+/* 377 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78094,7 +78259,7 @@ module.exports = {
 
 
 /***/ }),
-/* 382 */
+/* 378 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78163,7 +78328,7 @@ module.exports = {
 
 
 /***/ }),
-/* 383 */
+/* 379 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78250,18 +78415,18 @@ module.exports = {
 
 
 /***/ }),
-/* 384 */
+/* 380 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
 
-var emojies_defs      = __webpack_require__(385);
-var emojies_shortcuts = __webpack_require__(386);
-var emoji_html        = __webpack_require__(387);
-var emoji_replace     = __webpack_require__(388);
-var normalize_opts    = __webpack_require__(389);
+var emojies_defs      = __webpack_require__(381);
+var emojies_shortcuts = __webpack_require__(382);
+var emoji_html        = __webpack_require__(383);
+var emoji_replace     = __webpack_require__(384);
+var normalize_opts    = __webpack_require__(385);
 
 
 module.exports = function emoji_plugin(md, options) {
@@ -78280,13 +78445,13 @@ module.exports = function emoji_plugin(md, options) {
 
 
 /***/ }),
-/* 385 */
+/* 381 */
 /***/ (function(module, exports) {
 
 module.exports = {"100":"💯","1234":"🔢","grinning":"😀","smiley":"😃","smile":"😄","grin":"😁","laughing":"😆","satisfied":"😆","sweat_smile":"😅","joy":"😂","rofl":"🤣","relaxed":"☺️","blush":"😊","innocent":"😇","slightly_smiling_face":"🙂","upside_down_face":"🙃","wink":"😉","relieved":"😌","heart_eyes":"😍","kissing_heart":"😘","kissing":"😗","kissing_smiling_eyes":"😙","kissing_closed_eyes":"😚","yum":"😋","stuck_out_tongue_winking_eye":"😜","stuck_out_tongue_closed_eyes":"😝","stuck_out_tongue":"😛","money_mouth_face":"🤑","hugs":"🤗","nerd_face":"🤓","sunglasses":"😎","clown_face":"🤡","cowboy_hat_face":"🤠","smirk":"😏","unamused":"😒","disappointed":"😞","pensive":"😔","worried":"😟","confused":"😕","slightly_frowning_face":"🙁","frowning_face":"☹️","persevere":"😣","confounded":"😖","tired_face":"😫","weary":"😩","triumph":"😤","angry":"😠","rage":"😡","pout":"😡","no_mouth":"😶","neutral_face":"😐","expressionless":"😑","hushed":"😯","frowning":"😦","anguished":"😧","open_mouth":"😮","astonished":"😲","dizzy_face":"😵","flushed":"😳","scream":"😱","fearful":"😨","cold_sweat":"😰","cry":"😢","disappointed_relieved":"😥","drooling_face":"🤤","sob":"😭","sweat":"😓","sleepy":"😪","sleeping":"😴","roll_eyes":"🙄","thinking":"🤔","lying_face":"🤥","grimacing":"😬","zipper_mouth_face":"🤐","nauseated_face":"🤢","sneezing_face":"🤧","mask":"😷","face_with_thermometer":"🤒","face_with_head_bandage":"🤕","smiling_imp":"😈","imp":"👿","japanese_ogre":"👹","japanese_goblin":"👺","hankey":"💩","poop":"💩","shit":"💩","ghost":"👻","skull":"💀","skull_and_crossbones":"☠️","alien":"👽","space_invader":"👾","robot":"🤖","jack_o_lantern":"🎃","smiley_cat":"😺","smile_cat":"😸","joy_cat":"😹","heart_eyes_cat":"😻","smirk_cat":"😼","kissing_cat":"😽","scream_cat":"🙀","crying_cat_face":"😿","pouting_cat":"😾","open_hands":"👐","raised_hands":"🙌","clap":"👏","pray":"🙏","handshake":"🤝","+1":"👍","thumbsup":"👍","-1":"👎","thumbsdown":"👎","fist_oncoming":"👊","facepunch":"👊","punch":"👊","fist_raised":"✊","fist":"✊","fist_left":"🤛","fist_right":"🤜","crossed_fingers":"🤞","v":"✌️","metal":"🤘","ok_hand":"👌","point_left":"👈","point_right":"👉","point_up_2":"👆","point_down":"👇","point_up":"☝️","hand":"✋","raised_hand":"✋","raised_back_of_hand":"🤚","raised_hand_with_fingers_splayed":"🖐","vulcan_salute":"🖖","wave":"👋","call_me_hand":"🤙","muscle":"💪","middle_finger":"🖕","fu":"🖕","writing_hand":"✍️","selfie":"🤳","nail_care":"💅","ring":"💍","lipstick":"💄","kiss":"💋","lips":"👄","tongue":"👅","ear":"👂","nose":"👃","footprints":"👣","eye":"👁","eyes":"👀","speaking_head":"🗣","bust_in_silhouette":"👤","busts_in_silhouette":"👥","baby":"👶","boy":"👦","girl":"👧","man":"👨","woman":"👩","blonde_woman":"👱‍♀","blonde_man":"👱","person_with_blond_hair":"👱","older_man":"👴","older_woman":"👵","man_with_gua_pi_mao":"👲","woman_with_turban":"👳‍♀","man_with_turban":"👳","policewoman":"👮‍♀","policeman":"👮","cop":"👮","construction_worker_woman":"👷‍♀","construction_worker_man":"👷","construction_worker":"👷","guardswoman":"💂‍♀","guardsman":"💂","female_detective":"🕵️‍♀️","male_detective":"🕵","detective":"🕵","woman_health_worker":"👩‍⚕","man_health_worker":"👨‍⚕","woman_farmer":"👩‍🌾","man_farmer":"👨‍🌾","woman_cook":"👩‍🍳","man_cook":"👨‍🍳","woman_student":"👩‍🎓","man_student":"👨‍🎓","woman_singer":"👩‍🎤","man_singer":"👨‍🎤","woman_teacher":"👩‍🏫","man_teacher":"👨‍🏫","woman_factory_worker":"👩‍🏭","man_factory_worker":"👨‍🏭","woman_technologist":"👩‍💻","man_technologist":"👨‍💻","woman_office_worker":"👩‍💼","man_office_worker":"👨‍💼","woman_mechanic":"👩‍🔧","man_mechanic":"👨‍🔧","woman_scientist":"👩‍🔬","man_scientist":"👨‍🔬","woman_artist":"👩‍🎨","man_artist":"👨‍🎨","woman_firefighter":"👩‍🚒","man_firefighter":"👨‍🚒","woman_pilot":"👩‍✈","man_pilot":"👨‍✈","woman_astronaut":"👩‍🚀","man_astronaut":"👨‍🚀","woman_judge":"👩‍⚖","man_judge":"👨‍⚖","mrs_claus":"🤶","santa":"🎅","princess":"👸","prince":"🤴","bride_with_veil":"👰","man_in_tuxedo":"🤵","angel":"👼","pregnant_woman":"🤰","bowing_woman":"🙇‍♀","bowing_man":"🙇","bow":"🙇","tipping_hand_woman":"💁","information_desk_person":"💁","sassy_woman":"💁","tipping_hand_man":"💁‍♂","sassy_man":"💁‍♂","no_good_woman":"🙅","no_good":"🙅","ng_woman":"🙅","no_good_man":"🙅‍♂","ng_man":"🙅‍♂","ok_woman":"🙆","ok_man":"🙆‍♂","raising_hand_woman":"🙋","raising_hand":"🙋","raising_hand_man":"🙋‍♂","woman_facepalming":"🤦‍♀","man_facepalming":"🤦‍♂","woman_shrugging":"🤷‍♀","man_shrugging":"🤷‍♂","pouting_woman":"🙎","person_with_pouting_face":"🙎","pouting_man":"🙎‍♂","frowning_woman":"🙍","person_frowning":"🙍","frowning_man":"🙍‍♂","haircut_woman":"💇","haircut":"💇","haircut_man":"💇‍♂","massage_woman":"💆","massage":"💆","massage_man":"💆‍♂","business_suit_levitating":"🕴","dancer":"💃","man_dancing":"🕺","dancing_women":"👯","dancers":"👯","dancing_men":"👯‍♂","walking_woman":"🚶‍♀","walking_man":"🚶","walking":"🚶","running_woman":"🏃‍♀","running_man":"🏃","runner":"🏃","running":"🏃","couple":"👫","two_women_holding_hands":"👭","two_men_holding_hands":"👬","couple_with_heart_woman_man":"💑","couple_with_heart":"💑","couple_with_heart_woman_woman":"👩‍❤️‍👩","couple_with_heart_man_man":"👨‍❤️‍👨","couplekiss_man_woman":"💏","couplekiss_woman_woman":"👩‍❤️‍💋‍👩","couplekiss_man_man":"👨‍❤️‍💋‍👨","family_man_woman_boy":"👪","family":"👪","family_man_woman_girl":"👨‍👩‍👧","family_man_woman_girl_boy":"👨‍👩‍👧‍👦","family_man_woman_boy_boy":"👨‍👩‍👦‍👦","family_man_woman_girl_girl":"👨‍👩‍👧‍👧","family_woman_woman_boy":"👩‍👩‍👦","family_woman_woman_girl":"👩‍👩‍👧","family_woman_woman_girl_boy":"👩‍👩‍👧‍👦","family_woman_woman_boy_boy":"👩‍👩‍👦‍👦","family_woman_woman_girl_girl":"👩‍👩‍👧‍👧","family_man_man_boy":"👨‍👨‍👦","family_man_man_girl":"👨‍👨‍👧","family_man_man_girl_boy":"👨‍👨‍👧‍👦","family_man_man_boy_boy":"👨‍👨‍👦‍👦","family_man_man_girl_girl":"👨‍👨‍👧‍👧","family_woman_boy":"👩‍👦","family_woman_girl":"👩‍👧","family_woman_girl_boy":"👩‍👧‍👦","family_woman_boy_boy":"👩‍👦‍👦","family_woman_girl_girl":"👩‍👧‍👧","family_man_boy":"👨‍👦","family_man_girl":"👨‍👧","family_man_girl_boy":"👨‍👧‍👦","family_man_boy_boy":"👨‍👦‍👦","family_man_girl_girl":"👨‍👧‍👧","womans_clothes":"👚","shirt":"👕","tshirt":"👕","jeans":"👖","necktie":"👔","dress":"👗","bikini":"👙","kimono":"👘","high_heel":"👠","sandal":"👡","boot":"👢","mans_shoe":"👞","shoe":"👞","athletic_shoe":"👟","womans_hat":"👒","tophat":"🎩","mortar_board":"🎓","crown":"👑","rescue_worker_helmet":"⛑","school_satchel":"🎒","pouch":"👝","purse":"👛","handbag":"👜","briefcase":"💼","eyeglasses":"👓","dark_sunglasses":"🕶","closed_umbrella":"🌂","open_umbrella":"☂️","dog":"🐶","cat":"🐱","mouse":"🐭","hamster":"🐹","rabbit":"🐰","fox_face":"🦊","bear":"🐻","panda_face":"🐼","koala":"🐨","tiger":"🐯","lion":"🦁","cow":"🐮","pig":"🐷","pig_nose":"🐽","frog":"🐸","monkey_face":"🐵","see_no_evil":"🙈","hear_no_evil":"🙉","speak_no_evil":"🙊","monkey":"🐒","chicken":"🐔","penguin":"🐧","bird":"🐦","baby_chick":"🐤","hatching_chick":"🐣","hatched_chick":"🐥","duck":"🦆","eagle":"🦅","owl":"🦉","bat":"🦇","wolf":"🐺","boar":"🐗","horse":"🐴","unicorn":"🦄","bee":"🐝","honeybee":"🐝","bug":"🐛","butterfly":"🦋","snail":"🐌","shell":"🐚","beetle":"🐞","ant":"🐜","spider":"🕷","spider_web":"🕸","turtle":"🐢","snake":"🐍","lizard":"🦎","scorpion":"🦂","crab":"🦀","squid":"🦑","octopus":"🐙","shrimp":"🦐","tropical_fish":"🐠","fish":"🐟","blowfish":"🐡","dolphin":"🐬","flipper":"🐬","shark":"🦈","whale":"🐳","whale2":"🐋","crocodile":"🐊","leopard":"🐆","tiger2":"🐅","water_buffalo":"🐃","ox":"🐂","cow2":"🐄","deer":"🦌","dromedary_camel":"🐪","camel":"🐫","elephant":"🐘","rhinoceros":"🦏","gorilla":"🦍","racehorse":"🐎","pig2":"🐖","goat":"🐐","ram":"🐏","sheep":"🐑","dog2":"🐕","poodle":"🐩","cat2":"🐈","rooster":"🐓","turkey":"🦃","dove":"🕊","rabbit2":"🐇","mouse2":"🐁","rat":"🐀","chipmunk":"🐿","feet":"🐾","paw_prints":"🐾","dragon":"🐉","dragon_face":"🐲","cactus":"🌵","christmas_tree":"🎄","evergreen_tree":"🌲","deciduous_tree":"🌳","palm_tree":"🌴","seedling":"🌱","herb":"🌿","shamrock":"☘️","four_leaf_clover":"🍀","bamboo":"🎍","tanabata_tree":"🎋","leaves":"🍃","fallen_leaf":"🍂","maple_leaf":"🍁","mushroom":"🍄","ear_of_rice":"🌾","bouquet":"💐","tulip":"🌷","rose":"🌹","wilted_flower":"🥀","sunflower":"🌻","blossom":"🌼","cherry_blossom":"🌸","hibiscus":"🌺","earth_americas":"🌎","earth_africa":"🌍","earth_asia":"🌏","full_moon":"🌕","waning_gibbous_moon":"🌖","last_quarter_moon":"🌗","waning_crescent_moon":"🌘","new_moon":"🌑","waxing_crescent_moon":"🌒","first_quarter_moon":"🌓","moon":"🌔","waxing_gibbous_moon":"🌔","new_moon_with_face":"🌚","full_moon_with_face":"🌝","sun_with_face":"🌞","first_quarter_moon_with_face":"🌛","last_quarter_moon_with_face":"🌜","crescent_moon":"🌙","dizzy":"💫","star":"⭐️","star2":"🌟","sparkles":"✨","zap":"⚡️","fire":"🔥","boom":"💥","collision":"💥","comet":"☄","sunny":"☀️","sun_behind_small_cloud":"🌤","partly_sunny":"⛅️","sun_behind_large_cloud":"🌥","sun_behind_rain_cloud":"🌦","rainbow":"🌈","cloud":"☁️","cloud_with_rain":"🌧","cloud_with_lightning_and_rain":"⛈","cloud_with_lightning":"🌩","cloud_with_snow":"🌨","snowman_with_snow":"☃️","snowman":"⛄️","snowflake":"❄️","wind_face":"🌬","dash":"💨","tornado":"🌪","fog":"🌫","ocean":"🌊","droplet":"💧","sweat_drops":"💦","umbrella":"☔️","green_apple":"🍏","apple":"🍎","pear":"🍐","tangerine":"🍊","orange":"🍊","mandarin":"🍊","lemon":"🍋","banana":"🍌","watermelon":"🍉","grapes":"🍇","strawberry":"🍓","melon":"🍈","cherries":"🍒","peach":"🍑","pineapple":"🍍","kiwi_fruit":"🥝","avocado":"🥑","tomato":"🍅","eggplant":"🍆","cucumber":"🥒","carrot":"🥕","corn":"🌽","hot_pepper":"🌶","potato":"🥔","sweet_potato":"🍠","chestnut":"🌰","peanuts":"🥜","honey_pot":"🍯","croissant":"🥐","bread":"🍞","baguette_bread":"🥖","cheese":"🧀","egg":"🥚","fried_egg":"🍳","bacon":"🥓","pancakes":"🥞","fried_shrimp":"🍤","poultry_leg":"🍗","meat_on_bone":"🍖","pizza":"🍕","hotdog":"🌭","hamburger":"🍔","fries":"🍟","stuffed_flatbread":"🥙","taco":"🌮","burrito":"🌯","green_salad":"🥗","shallow_pan_of_food":"🥘","spaghetti":"🍝","ramen":"🍜","stew":"🍲","fish_cake":"🍥","sushi":"🍣","bento":"🍱","curry":"🍛","rice":"🍚","rice_ball":"🍙","rice_cracker":"🍘","oden":"🍢","dango":"🍡","shaved_ice":"🍧","ice_cream":"🍨","icecream":"🍦","cake":"🍰","birthday":"🎂","custard":"🍮","lollipop":"🍭","candy":"🍬","chocolate_bar":"🍫","popcorn":"🍿","doughnut":"🍩","cookie":"🍪","milk_glass":"🥛","baby_bottle":"🍼","coffee":"☕️","tea":"🍵","sake":"🍶","beer":"🍺","beers":"🍻","clinking_glasses":"🥂","wine_glass":"🍷","tumbler_glass":"🥃","cocktail":"🍸","tropical_drink":"🍹","champagne":"🍾","spoon":"🥄","fork_and_knife":"🍴","plate_with_cutlery":"🍽","soccer":"⚽️","basketball":"🏀","football":"🏈","baseball":"⚾️","tennis":"🎾","volleyball":"🏐","rugby_football":"🏉","8ball":"🎱","ping_pong":"🏓","badminton":"🏸","goal_net":"🥅","ice_hockey":"🏒","field_hockey":"🏑","cricket":"🏏","golf":"⛳️","bow_and_arrow":"🏹","fishing_pole_and_fish":"🎣","boxing_glove":"🥊","martial_arts_uniform":"🥋","ice_skate":"⛸","ski":"🎿","skier":"⛷","snowboarder":"🏂","weight_lifting_woman":"🏋️‍♀️","weight_lifting_man":"🏋","person_fencing":"🤺","women_wrestling":"🤼‍♀","men_wrestling":"🤼‍♂","woman_cartwheeling":"🤸‍♀","man_cartwheeling":"🤸‍♂","basketball_woman":"⛹️‍♀️","basketball_man":"⛹","woman_playing_handball":"🤾‍♀","man_playing_handball":"🤾‍♂","golfing_woman":"🏌️‍♀️","golfing_man":"🏌","surfing_woman":"🏄‍♀","surfing_man":"🏄","surfer":"🏄","swimming_woman":"🏊‍♀","swimming_man":"🏊","swimmer":"🏊","woman_playing_water_polo":"🤽‍♀","man_playing_water_polo":"🤽‍♂","rowing_woman":"🚣‍♀","rowing_man":"🚣","rowboat":"🚣","horse_racing":"🏇","biking_woman":"🚴‍♀","biking_man":"🚴","bicyclist":"🚴","mountain_biking_woman":"🚵‍♀","mountain_biking_man":"🚵","mountain_bicyclist":"🚵","running_shirt_with_sash":"🎽","medal_sports":"🏅","medal_military":"🎖","1st_place_medal":"🥇","2nd_place_medal":"🥈","3rd_place_medal":"🥉","trophy":"🏆","rosette":"🏵","reminder_ribbon":"🎗","ticket":"🎫","tickets":"🎟","circus_tent":"🎪","woman_juggling":"🤹‍♀","man_juggling":"🤹‍♂","performing_arts":"🎭","art":"🎨","clapper":"🎬","microphone":"🎤","headphones":"🎧","musical_score":"🎼","musical_keyboard":"🎹","drum":"🥁","saxophone":"🎷","trumpet":"🎺","guitar":"🎸","violin":"🎻","game_die":"🎲","dart":"🎯","bowling":"🎳","video_game":"🎮","slot_machine":"🎰","car":"🚗","red_car":"🚗","taxi":"🚕","blue_car":"🚙","bus":"🚌","trolleybus":"🚎","racing_car":"🏎","police_car":"🚓","ambulance":"🚑","fire_engine":"🚒","minibus":"🚐","truck":"🚚","articulated_lorry":"🚛","tractor":"🚜","kick_scooter":"🛴","bike":"🚲","motor_scooter":"🛵","motorcycle":"🏍","rotating_light":"🚨","oncoming_police_car":"🚔","oncoming_bus":"🚍","oncoming_automobile":"🚘","oncoming_taxi":"🚖","aerial_tramway":"🚡","mountain_cableway":"🚠","suspension_railway":"🚟","railway_car":"🚃","train":"🚋","mountain_railway":"🚞","monorail":"🚝","bullettrain_side":"🚄","bullettrain_front":"🚅","light_rail":"🚈","steam_locomotive":"🚂","train2":"🚆","metro":"🚇","tram":"🚊","station":"🚉","helicopter":"🚁","small_airplane":"🛩","airplane":"✈️","flight_departure":"🛫","flight_arrival":"🛬","rocket":"🚀","artificial_satellite":"🛰","seat":"💺","canoe":"🛶","boat":"⛵️","sailboat":"⛵️","motor_boat":"🛥","speedboat":"🚤","passenger_ship":"🛳","ferry":"⛴","ship":"🚢","anchor":"⚓️","construction":"🚧","fuelpump":"⛽️","busstop":"🚏","vertical_traffic_light":"🚦","traffic_light":"🚥","world_map":"🗺","moyai":"🗿","statue_of_liberty":"🗽","fountain":"⛲️","tokyo_tower":"🗼","european_castle":"🏰","japanese_castle":"🏯","stadium":"🏟","ferris_wheel":"🎡","roller_coaster":"🎢","carousel_horse":"🎠","parasol_on_ground":"⛱","beach_umbrella":"🏖","desert_island":"🏝","mountain":"⛰","mountain_snow":"🏔","mount_fuji":"🗻","volcano":"🌋","desert":"🏜","camping":"🏕","tent":"⛺️","railway_track":"🛤","motorway":"🛣","building_construction":"🏗","factory":"🏭","house":"🏠","house_with_garden":"🏡","houses":"🏘","derelict_house":"🏚","office":"🏢","department_store":"🏬","post_office":"🏣","european_post_office":"🏤","hospital":"🏥","bank":"🏦","hotel":"🏨","convenience_store":"🏪","school":"🏫","love_hotel":"🏩","wedding":"💒","classical_building":"🏛","church":"⛪️","mosque":"🕌","synagogue":"🕍","kaaba":"🕋","shinto_shrine":"⛩","japan":"🗾","rice_scene":"🎑","national_park":"🏞","sunrise":"🌅","sunrise_over_mountains":"🌄","stars":"🌠","sparkler":"🎇","fireworks":"🎆","city_sunrise":"🌇","city_sunset":"🌆","cityscape":"🏙","night_with_stars":"🌃","milky_way":"🌌","bridge_at_night":"🌉","foggy":"🌁","watch":"⌚️","iphone":"📱","calling":"📲","computer":"💻","keyboard":"⌨️","desktop_computer":"🖥","printer":"🖨","computer_mouse":"🖱","trackball":"🖲","joystick":"🕹","clamp":"🗜","minidisc":"💽","floppy_disk":"💾","cd":"💿","dvd":"📀","vhs":"📼","camera":"📷","camera_flash":"📸","video_camera":"📹","movie_camera":"🎥","film_projector":"📽","film_strip":"🎞","telephone_receiver":"📞","phone":"☎️","telephone":"☎️","pager":"📟","fax":"📠","tv":"📺","radio":"📻","studio_microphone":"🎙","level_slider":"🎚","control_knobs":"🎛","stopwatch":"⏱","timer_clock":"⏲","alarm_clock":"⏰","mantelpiece_clock":"🕰","hourglass":"⌛️","hourglass_flowing_sand":"⏳","satellite":"📡","battery":"🔋","electric_plug":"🔌","bulb":"💡","flashlight":"🔦","candle":"🕯","wastebasket":"🗑","oil_drum":"🛢","money_with_wings":"💸","dollar":"💵","yen":"💴","euro":"💶","pound":"💷","moneybag":"💰","credit_card":"💳","gem":"💎","balance_scale":"⚖️","wrench":"🔧","hammer":"🔨","hammer_and_pick":"⚒","hammer_and_wrench":"🛠","pick":"⛏","nut_and_bolt":"🔩","gear":"⚙️","chains":"⛓","gun":"🔫","bomb":"💣","hocho":"🔪","knife":"🔪","dagger":"🗡","crossed_swords":"⚔️","shield":"🛡","smoking":"🚬","coffin":"⚰️","funeral_urn":"⚱️","amphora":"🏺","crystal_ball":"🔮","prayer_beads":"📿","barber":"💈","alembic":"⚗️","telescope":"🔭","microscope":"🔬","hole":"🕳","pill":"💊","syringe":"💉","thermometer":"🌡","toilet":"🚽","potable_water":"🚰","shower":"🚿","bathtub":"🛁","bath":"🛀","bellhop_bell":"🛎","key":"🔑","old_key":"🗝","door":"🚪","couch_and_lamp":"🛋","bed":"🛏","sleeping_bed":"🛌","framed_picture":"🖼","shopping":"🛍","shopping_cart":"🛒","gift":"🎁","balloon":"🎈","flags":"🎏","ribbon":"🎀","confetti_ball":"🎊","tada":"🎉","dolls":"🎎","izakaya_lantern":"🏮","lantern":"🏮","wind_chime":"🎐","email":"✉️","envelope":"✉️","envelope_with_arrow":"📩","incoming_envelope":"📨","e-mail":"📧","love_letter":"💌","inbox_tray":"📥","outbox_tray":"📤","package":"📦","label":"🏷","mailbox_closed":"📪","mailbox":"📫","mailbox_with_mail":"📬","mailbox_with_no_mail":"📭","postbox":"📮","postal_horn":"📯","scroll":"📜","page_with_curl":"📃","page_facing_up":"📄","bookmark_tabs":"📑","bar_chart":"📊","chart_with_upwards_trend":"📈","chart_with_downwards_trend":"📉","spiral_notepad":"🗒","spiral_calendar":"🗓","calendar":"📆","date":"📅","card_index":"📇","card_file_box":"🗃","ballot_box":"🗳","file_cabinet":"🗄","clipboard":"📋","file_folder":"📁","open_file_folder":"📂","card_index_dividers":"🗂","newspaper_roll":"🗞","newspaper":"📰","notebook":"📓","notebook_with_decorative_cover":"📔","ledger":"📒","closed_book":"📕","green_book":"📗","blue_book":"📘","orange_book":"📙","books":"📚","book":"📖","open_book":"📖","bookmark":"🔖","link":"🔗","paperclip":"📎","paperclips":"🖇","triangular_ruler":"📐","straight_ruler":"📏","pushpin":"📌","round_pushpin":"📍","scissors":"✂️","pen":"🖊","fountain_pen":"🖋","black_nib":"✒️","paintbrush":"🖌","crayon":"🖍","memo":"📝","pencil":"📝","pencil2":"✏️","mag":"🔍","mag_right":"🔎","lock_with_ink_pen":"🔏","closed_lock_with_key":"🔐","lock":"🔒","unlock":"🔓","heart":"❤️","yellow_heart":"💛","green_heart":"💚","blue_heart":"💙","purple_heart":"💜","black_heart":"🖤","broken_heart":"💔","heavy_heart_exclamation":"❣️","two_hearts":"💕","revolving_hearts":"💞","heartbeat":"💓","heartpulse":"💗","sparkling_heart":"💖","cupid":"💘","gift_heart":"💝","heart_decoration":"💟","peace_symbol":"☮️","latin_cross":"✝️","star_and_crescent":"☪️","om":"🕉","wheel_of_dharma":"☸️","star_of_david":"✡️","six_pointed_star":"🔯","menorah":"🕎","yin_yang":"☯️","orthodox_cross":"☦️","place_of_worship":"🛐","ophiuchus":"⛎","aries":"♈️","taurus":"♉️","gemini":"♊️","cancer":"♋️","leo":"♌️","virgo":"♍️","libra":"♎️","scorpius":"♏️","sagittarius":"♐️","capricorn":"♑️","aquarius":"♒️","pisces":"♓️","id":"🆔","atom_symbol":"⚛️","accept":"🉑","radioactive":"☢️","biohazard":"☣️","mobile_phone_off":"📴","vibration_mode":"📳","eight_pointed_black_star":"✴️","vs":"🆚","white_flower":"💮","ideograph_advantage":"🉐","secret":"㊙️","congratulations":"㊗️","u6e80":"🈵","a":"🅰️","b":"🅱️","ab":"🆎","cl":"🆑","o2":"🅾️","sos":"🆘","x":"❌","o":"⭕️","stop_sign":"🛑","no_entry":"⛔️","name_badge":"📛","no_entry_sign":"🚫","anger":"💢","hotsprings":"♨️","no_pedestrians":"🚷","do_not_litter":"🚯","no_bicycles":"🚳","non-potable_water":"🚱","underage":"🔞","no_mobile_phones":"📵","no_smoking":"🚭","exclamation":"❗️","heavy_exclamation_mark":"❗️","grey_exclamation":"❕","question":"❓","grey_question":"❔","bangbang":"‼️","interrobang":"⁉️","low_brightness":"🔅","high_brightness":"🔆","part_alternation_mark":"〽️","warning":"⚠️","children_crossing":"🚸","trident":"🔱","fleur_de_lis":"⚜️","beginner":"🔰","recycle":"♻️","white_check_mark":"✅","chart":"💹","sparkle":"❇️","eight_spoked_asterisk":"✳️","negative_squared_cross_mark":"❎","globe_with_meridians":"🌐","diamond_shape_with_a_dot_inside":"💠","m":"Ⓜ️","cyclone":"🌀","zzz":"💤","atm":"🏧","wc":"🚾","wheelchair":"♿️","parking":"🅿️","sa":"🈂️","passport_control":"🛂","customs":"🛃","baggage_claim":"🛄","left_luggage":"🛅","mens":"🚹","womens":"🚺","baby_symbol":"🚼","restroom":"🚻","put_litter_in_its_place":"🚮","cinema":"🎦","signal_strength":"📶","koko":"🈁","symbols":"🔣","information_source":"ℹ️","abc":"🔤","abcd":"🔡","capital_abcd":"🔠","ng":"🆖","ok":"🆗","up":"🆙","cool":"🆒","new":"🆕","free":"🆓","zero":"0️⃣","one":"1️⃣","two":"2️⃣","three":"3️⃣","four":"4️⃣","five":"5️⃣","six":"6️⃣","seven":"7️⃣","eight":"8️⃣","nine":"9️⃣","keycap_ten":"🔟","hash":"#️⃣","asterisk":"*️⃣","arrow_forward":"▶️","pause_button":"⏸","play_or_pause_button":"⏯","stop_button":"⏹","record_button":"⏺","next_track_button":"⏭","previous_track_button":"⏮","fast_forward":"⏩","rewind":"⏪","arrow_double_up":"⏫","arrow_double_down":"⏬","arrow_backward":"◀️","arrow_up_small":"🔼","arrow_down_small":"🔽","arrow_right":"➡️","arrow_left":"⬅️","arrow_up":"⬆️","arrow_down":"⬇️","arrow_upper_right":"↗️","arrow_lower_right":"↘️","arrow_lower_left":"↙️","arrow_upper_left":"↖️","arrow_up_down":"↕️","left_right_arrow":"↔️","arrow_right_hook":"↪️","leftwards_arrow_with_hook":"↩️","arrow_heading_up":"⤴️","arrow_heading_down":"⤵️","twisted_rightwards_arrows":"🔀","repeat":"🔁","repeat_one":"🔂","arrows_counterclockwise":"🔄","arrows_clockwise":"🔃","musical_note":"🎵","notes":"🎶","heavy_plus_sign":"➕","heavy_minus_sign":"➖","heavy_division_sign":"➗","heavy_multiplication_x":"✖️","heavy_dollar_sign":"💲","currency_exchange":"💱","tm":"™️","copyright":"©️","registered":"®️","wavy_dash":"〰️","curly_loop":"➰","loop":"➿","end":"🔚","back":"🔙","on":"🔛","top":"🔝","soon":"🔜","heavy_check_mark":"✔️","ballot_box_with_check":"☑️","radio_button":"🔘","white_circle":"⚪️","black_circle":"⚫️","red_circle":"🔴","large_blue_circle":"🔵","small_red_triangle":"🔺","small_red_triangle_down":"🔻","small_orange_diamond":"🔸","small_blue_diamond":"🔹","large_orange_diamond":"🔶","large_blue_diamond":"🔷","white_square_button":"🔳","black_square_button":"🔲","black_small_square":"▪️","white_small_square":"▫️","black_medium_small_square":"◾️","white_medium_small_square":"◽️","black_medium_square":"◼️","white_medium_square":"◻️","black_large_square":"⬛️","white_large_square":"⬜️","speaker":"🔈","mute":"🔇","sound":"🔉","loud_sound":"🔊","bell":"🔔","no_bell":"🔕","mega":"📣","loudspeaker":"📢","eye_speech_bubble":"👁‍🗨","speech_balloon":"💬","thought_balloon":"💭","right_anger_bubble":"🗯","spades":"♠️","clubs":"♣️","hearts":"♥️","diamonds":"♦️","black_joker":"🃏","flower_playing_cards":"🎴","mahjong":"🀄️","clock1":"🕐","clock2":"🕑","clock3":"🕒","clock4":"🕓","clock5":"🕔","clock6":"🕕","clock7":"🕖","clock8":"🕗","clock9":"🕘","clock10":"🕙","clock11":"🕚","clock12":"🕛","clock130":"🕜","clock230":"🕝","clock330":"🕞","clock430":"🕟","clock530":"🕠","clock630":"🕡","clock730":"🕢","clock830":"🕣","clock930":"🕤","clock1030":"🕥","clock1130":"🕦","clock1230":"🕧","white_flag":"🏳️","black_flag":"🏴","checkered_flag":"🏁","triangular_flag_on_post":"🚩","rainbow_flag":"🏳️‍🌈","afghanistan":"🇦🇫","aland_islands":"🇦🇽","albania":"🇦🇱","algeria":"🇩🇿","american_samoa":"🇦🇸","andorra":"🇦🇩","angola":"🇦🇴","anguilla":"🇦🇮","antarctica":"🇦🇶","antigua_barbuda":"🇦🇬","argentina":"🇦🇷","armenia":"🇦🇲","aruba":"🇦🇼","australia":"🇦🇺","austria":"🇦🇹","azerbaijan":"🇦🇿","bahamas":"🇧🇸","bahrain":"🇧🇭","bangladesh":"🇧🇩","barbados":"🇧🇧","belarus":"🇧🇾","belgium":"🇧🇪","belize":"🇧🇿","benin":"🇧🇯","bermuda":"🇧🇲","bhutan":"🇧🇹","bolivia":"🇧🇴","caribbean_netherlands":"🇧🇶","bosnia_herzegovina":"🇧🇦","botswana":"🇧🇼","brazil":"🇧🇷","british_indian_ocean_territory":"🇮🇴","british_virgin_islands":"🇻🇬","brunei":"🇧🇳","bulgaria":"🇧🇬","burkina_faso":"🇧🇫","burundi":"🇧🇮","cape_verde":"🇨🇻","cambodia":"🇰🇭","cameroon":"🇨🇲","canada":"🇨🇦","canary_islands":"🇮🇨","cayman_islands":"🇰🇾","central_african_republic":"🇨🇫","chad":"🇹🇩","chile":"🇨🇱","cn":"🇨🇳","christmas_island":"🇨🇽","cocos_islands":"🇨🇨","colombia":"🇨🇴","comoros":"🇰🇲","congo_brazzaville":"🇨🇬","congo_kinshasa":"🇨🇩","cook_islands":"🇨🇰","costa_rica":"🇨🇷","cote_divoire":"🇨🇮","croatia":"🇭🇷","cuba":"🇨🇺","curacao":"🇨🇼","cyprus":"🇨🇾","czech_republic":"🇨🇿","denmark":"🇩🇰","djibouti":"🇩🇯","dominica":"🇩🇲","dominican_republic":"🇩🇴","ecuador":"🇪🇨","egypt":"🇪🇬","el_salvador":"🇸🇻","equatorial_guinea":"🇬🇶","eritrea":"🇪🇷","estonia":"🇪🇪","ethiopia":"🇪🇹","eu":"🇪🇺","european_union":"🇪🇺","falkland_islands":"🇫🇰","faroe_islands":"🇫🇴","fiji":"🇫🇯","finland":"🇫🇮","fr":"🇫🇷","french_guiana":"🇬🇫","french_polynesia":"🇵🇫","french_southern_territories":"🇹🇫","gabon":"🇬🇦","gambia":"🇬🇲","georgia":"🇬🇪","de":"🇩🇪","ghana":"🇬🇭","gibraltar":"🇬🇮","greece":"🇬🇷","greenland":"🇬🇱","grenada":"🇬🇩","guadeloupe":"🇬🇵","guam":"🇬🇺","guatemala":"🇬🇹","guernsey":"🇬🇬","guinea":"🇬🇳","guinea_bissau":"🇬🇼","guyana":"🇬🇾","haiti":"🇭🇹","honduras":"🇭🇳","hong_kong":"🇭🇰","hungary":"🇭🇺","iceland":"🇮🇸","india":"🇮🇳","indonesia":"🇮🇩","iran":"🇮🇷","iraq":"🇮🇶","ireland":"🇮🇪","isle_of_man":"🇮🇲","israel":"🇮🇱","it":"🇮🇹","jamaica":"🇯🇲","jp":"🇯🇵","crossed_flags":"🎌","jersey":"🇯🇪","jordan":"🇯🇴","kazakhstan":"🇰🇿","kenya":"🇰🇪","kiribati":"🇰🇮","kosovo":"🇽🇰","kuwait":"🇰🇼","kyrgyzstan":"🇰🇬","laos":"🇱🇦","latvia":"🇱🇻","lebanon":"🇱🇧","lesotho":"🇱🇸","liberia":"🇱🇷","libya":"🇱🇾","liechtenstein":"🇱🇮","lithuania":"🇱🇹","luxembourg":"🇱🇺","macau":"🇲🇴","macedonia":"🇲🇰","madagascar":"🇲🇬","malawi":"🇲🇼","malaysia":"🇲🇾","maldives":"🇲🇻","mali":"🇲🇱","malta":"🇲🇹","marshall_islands":"🇲🇭","martinique":"🇲🇶","mauritania":"🇲🇷","mauritius":"🇲🇺","mayotte":"🇾🇹","mexico":"🇲🇽","micronesia":"🇫🇲","moldova":"🇲🇩","monaco":"🇲🇨","mongolia":"🇲🇳","montenegro":"🇲🇪","montserrat":"🇲🇸","morocco":"🇲🇦","mozambique":"🇲🇿","myanmar":"🇲🇲","namibia":"🇳🇦","nauru":"🇳🇷","nepal":"🇳🇵","netherlands":"🇳🇱","new_caledonia":"🇳🇨","new_zealand":"🇳🇿","nicaragua":"🇳🇮","niger":"🇳🇪","nigeria":"🇳🇬","niue":"🇳🇺","norfolk_island":"🇳🇫","northern_mariana_islands":"🇲🇵","north_korea":"🇰🇵","norway":"🇳🇴","oman":"🇴🇲","pakistan":"🇵🇰","palau":"🇵🇼","palestinian_territories":"🇵🇸","panama":"🇵🇦","papua_new_guinea":"🇵🇬","paraguay":"🇵🇾","peru":"🇵🇪","philippines":"🇵🇭","pitcairn_islands":"🇵🇳","poland":"🇵🇱","portugal":"🇵🇹","puerto_rico":"🇵🇷","qatar":"🇶🇦","reunion":"🇷🇪","romania":"🇷🇴","ru":"🇷🇺","rwanda":"🇷🇼","st_barthelemy":"🇧🇱","st_helena":"🇸🇭","st_kitts_nevis":"🇰🇳","st_lucia":"🇱🇨","st_pierre_miquelon":"🇵🇲","st_vincent_grenadines":"🇻🇨","samoa":"🇼🇸","san_marino":"🇸🇲","sao_tome_principe":"🇸🇹","saudi_arabia":"🇸🇦","senegal":"🇸🇳","serbia":"🇷🇸","seychelles":"🇸🇨","sierra_leone":"🇸🇱","singapore":"🇸🇬","sint_maarten":"🇸🇽","slovakia":"🇸🇰","slovenia":"🇸🇮","solomon_islands":"🇸🇧","somalia":"🇸🇴","south_africa":"🇿🇦","south_georgia_south_sandwich_islands":"🇬🇸","kr":"🇰🇷","south_sudan":"🇸🇸","es":"🇪🇸","sri_lanka":"🇱🇰","sudan":"🇸🇩","suriname":"🇸🇷","swaziland":"🇸🇿","sweden":"🇸🇪","switzerland":"🇨🇭","syria":"🇸🇾","taiwan":"🇹🇼","tajikistan":"🇹🇯","tanzania":"🇹🇿","thailand":"🇹🇭","timor_leste":"🇹🇱","togo":"🇹🇬","tokelau":"🇹🇰","tonga":"🇹🇴","trinidad_tobago":"🇹🇹","tunisia":"🇹🇳","tr":"🇹🇷","turkmenistan":"🇹🇲","turks_caicos_islands":"🇹🇨","tuvalu":"🇹🇻","uganda":"🇺🇬","ukraine":"🇺🇦","united_arab_emirates":"🇦🇪","gb":"🇬🇧","uk":"🇬🇧","us":"🇺🇸","us_virgin_islands":"🇻🇮","uruguay":"🇺🇾","uzbekistan":"🇺🇿","vanuatu":"🇻🇺","vatican_city":"🇻🇦","venezuela":"🇻🇪","vietnam":"🇻🇳","wallis_futuna":"🇼🇫","western_sahara":"🇪🇭","yemen":"🇾🇪","zambia":"🇿🇲","zimbabwe":"🇿🇼"}
 
 /***/ }),
-/* 386 */
+/* 382 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78334,7 +78499,7 @@ module.exports = {
 
 
 /***/ }),
-/* 387 */
+/* 383 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78346,7 +78511,7 @@ module.exports = function emoji_html(tokens, idx /*, options, env */) {
 
 
 /***/ }),
-/* 388 */
+/* 384 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78442,7 +78607,7 @@ module.exports = function create_rule(md, emojies, shortcuts, scanRE, replaceRE)
 
 
 /***/ }),
-/* 389 */
+/* 385 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78508,7 +78673,7 @@ module.exports = function normalize_opts(options) {
 
 
 /***/ }),
-/* 390 */
+/* 386 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78581,7 +78746,7 @@ module.exports = function sub_plugin(md) {
 
 
 /***/ }),
-/* 391 */
+/* 387 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78653,7 +78818,7 @@ module.exports = function sup_plugin(md) {
 
 
 /***/ }),
-/* 392 */
+/* 388 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -78986,7 +79151,7 @@ module.exports = function sub_plugin(md) {
 
 
 /***/ }),
-/* 393 */
+/* 389 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -79221,7 +79386,7 @@ module.exports = function deflist_plugin(md) {
 
 
 /***/ }),
-/* 394 */
+/* 390 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -79376,7 +79541,7 @@ module.exports = function sub_plugin(md) {
 
 
 /***/ }),
-/* 395 */
+/* 391 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -79503,7 +79668,7 @@ module.exports = function ins_plugin(md) {
 
 
 /***/ }),
-/* 396 */
+/* 392 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -79630,7 +79795,7 @@ module.exports = function ins_plugin(md) {
 
 
 /***/ }),
-/* 397 */
+/* 393 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -79826,11 +79991,11 @@ exports.default = function (md, options) {
   }
 };
 
-var _clone = __webpack_require__(398);
+var _clone = __webpack_require__(394);
 
 var _clone2 = _interopRequireDefault(_clone);
 
-var _uslug = __webpack_require__(403);
+var _uslug = __webpack_require__(399);
 
 var _uslug2 = _interopRequireDefault(_uslug);
 
@@ -79944,7 +80109,7 @@ var generateTocMarkdownFromArray = function generateTocMarkdownFromArray(heading
 };
 
 /***/ }),
-/* 398 */
+/* 394 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(Buffer) {var clone = (function() {
@@ -80199,10 +80364,10 @@ if (typeof module === 'object' && module.exports) {
   module.exports = clone;
 }
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(399).Buffer))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(395).Buffer))
 
 /***/ }),
-/* 399 */
+/* 395 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -80216,9 +80381,9 @@ if (typeof module === 'object' && module.exports) {
 
 
 
-var base64 = __webpack_require__(400)
-var ieee754 = __webpack_require__(401)
-var isArray = __webpack_require__(402)
+var base64 = __webpack_require__(396)
+var ieee754 = __webpack_require__(397)
+var isArray = __webpack_require__(398)
 
 exports.Buffer = Buffer
 exports.SlowBuffer = SlowBuffer
@@ -81996,10 +82161,10 @@ function isnan (val) {
   return val !== val // eslint-disable-line no-self-compare
 }
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(5)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(10)))
 
 /***/ }),
-/* 400 */
+/* 396 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -82120,7 +82285,7 @@ function fromByteArray (uint8) {
 
 
 /***/ }),
-/* 401 */
+/* 397 */
 /***/ (function(module, exports) {
 
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
@@ -82210,7 +82375,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
 
 
 /***/ }),
-/* 402 */
+/* 398 */
 /***/ (function(module, exports) {
 
 var toString = {}.toString;
@@ -82221,21 +82386,21 @@ module.exports = Array.isArray || function (arr) {
 
 
 /***/ }),
-/* 403 */
+/* 399 */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = __webpack_require__(404);
+module.exports = __webpack_require__(400);
 
 /***/ }),
-/* 404 */
+/* 400 */
 /***/ (function(module, exports, __webpack_require__) {
 
 (function() {
-  var L = __webpack_require__(405).L,
-      N = __webpack_require__(406).N,
-      Z = __webpack_require__(407).Z,
-      M = __webpack_require__(408).M,
-      unorm = __webpack_require__(409);
+  var L = __webpack_require__(401).L,
+      N = __webpack_require__(402).N,
+      Z = __webpack_require__(403).Z,
+      M = __webpack_require__(404).M,
+      unorm = __webpack_require__(405);
 
   var _unicodeCategory = function(code) {
     if (~L.indexOf(code)) return 'L';
@@ -82290,7 +82455,7 @@ module.exports = __webpack_require__(404);
 }());
 
 /***/ }),
-/* 405 */
+/* 401 */
 /***/ (function(module, exports) {
 
 /* 
@@ -82311,7 +82476,7 @@ exports.L = [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
 
 
 /***/ }),
-/* 406 */
+/* 402 */
 /***/ (function(module, exports) {
 
 /*
@@ -82330,7 +82495,7 @@ exports.N = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 178, 179, 185, 188, 189, 19
 
 
 /***/ }),
-/* 407 */
+/* 403 */
 /***/ (function(module, exports) {
 
 /*
@@ -82349,7 +82514,7 @@ exports.Z = [32, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200
 
 
 /***/ }),
-/* 408 */
+/* 404 */
 /***/ (function(module, exports) {
 
 /*
@@ -82368,7 +82533,7 @@ exports.M = [768, 769, 770, 771, 772, 773, 774, 775, 776, 777, 778, 779, 780, 78
 
 
 /***/ }),
-/* 409 */
+/* 405 */
 /***/ (function(module, exports, __webpack_require__) {
 
 (function (root) {
@@ -82816,7 +82981,7 @@ UChar.udata={
 
 
 /***/ }),
-/* 410 */
+/* 406 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -82832,7 +82997,7 @@ for rendering output.
 /*jslint node: true */
 
 
-var katex = __webpack_require__(411);
+var katex = __webpack_require__(407);
 
 // Test if potential opening or closing delimieter
 // Assumes that there is a "$" at state.src[pos]
@@ -83020,7 +83185,7 @@ module.exports = function math_plugin(md, options) {
 
 
 /***/ }),
-/* 411 */
+/* 407 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* eslint no-console:0 */
@@ -83032,12 +83197,12 @@ module.exports = function math_plugin(md, options) {
  * errors in the expression, or errors in javascript handling.
  */
 
-var ParseError = __webpack_require__(252);
-var Settings = __webpack_require__(297);
+var ParseError = __webpack_require__(7);
+var Settings = __webpack_require__(188);
 
-var buildTree = __webpack_require__(412);
-var parseTree = __webpack_require__(419);
-var utils = __webpack_require__(251);
+var buildTree = __webpack_require__(408);
+var parseTree = __webpack_require__(415);
+var utils = __webpack_require__(6);
 
 /**
  * Parse and build an expression, and place that expression in the DOM node
@@ -83100,15 +83265,15 @@ module.exports = {
 
 
 /***/ }),
-/* 412 */
+/* 408 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var buildHTML = __webpack_require__(413);
-var buildMathML = __webpack_require__(416);
-var buildCommon = __webpack_require__(265);
-var Options = __webpack_require__(418);
-var Settings = __webpack_require__(297);
-var Style = __webpack_require__(264);
+var buildHTML = __webpack_require__(409);
+var buildMathML = __webpack_require__(412);
+var buildCommon = __webpack_require__(22);
+var Options = __webpack_require__(414);
+var Settings = __webpack_require__(188);
+var Style = __webpack_require__(21);
 
 var makeSpan = buildCommon.makeSpan;
 
@@ -83146,7 +83311,7 @@ module.exports = buildTree;
 
 
 /***/ }),
-/* 413 */
+/* 409 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* eslint no-console:0 */
@@ -83157,14 +83322,14 @@ module.exports = buildTree;
  * called, to produce a final HTML tree.
  */
 
-var ParseError = __webpack_require__(252);
-var Style = __webpack_require__(264);
+var ParseError = __webpack_require__(7);
+var Style = __webpack_require__(21);
 
-var buildCommon = __webpack_require__(265);
-var delimiter = __webpack_require__(415);
-var domTree = __webpack_require__(298);
-var fontMetrics = __webpack_require__(257);
-var utils = __webpack_require__(251);
+var buildCommon = __webpack_require__(22);
+var delimiter = __webpack_require__(411);
+var domTree = __webpack_require__(189);
+var fontMetrics = __webpack_require__(13);
+var utils = __webpack_require__(6);
 
 var makeSpan = buildCommon.makeSpan;
 
@@ -84554,7 +84719,7 @@ module.exports = buildHTML;
 
 
 /***/ }),
-/* 414 */
+/* 410 */
 /***/ (function(module, exports) {
 
 module.exports = {
@@ -86312,7 +86477,7 @@ module.exports = {
 
 
 /***/ }),
-/* 415 */
+/* 411 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /**
@@ -86337,13 +86502,13 @@ module.exports = {
  * used in `\left` and `\right`.
  */
 
-var ParseError = __webpack_require__(252);
-var Style = __webpack_require__(264);
+var ParseError = __webpack_require__(7);
+var Style = __webpack_require__(21);
 
-var buildCommon = __webpack_require__(265);
-var fontMetrics = __webpack_require__(257);
-var symbols = __webpack_require__(266);
-var utils = __webpack_require__(251);
+var buildCommon = __webpack_require__(22);
+var fontMetrics = __webpack_require__(13);
+var symbols = __webpack_require__(23);
+var utils = __webpack_require__(6);
 
 var makeSpan = buildCommon.makeSpan;
 
@@ -86860,7 +87025,7 @@ module.exports = {
 
 
 /***/ }),
-/* 416 */
+/* 412 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /**
@@ -86869,12 +87034,12 @@ module.exports = {
  * parser.
  */
 
-var buildCommon = __webpack_require__(265);
-var fontMetrics = __webpack_require__(257);
-var mathMLTree = __webpack_require__(417);
-var ParseError = __webpack_require__(252);
-var symbols = __webpack_require__(266);
-var utils = __webpack_require__(251);
+var buildCommon = __webpack_require__(22);
+var fontMetrics = __webpack_require__(13);
+var mathMLTree = __webpack_require__(413);
+var ParseError = __webpack_require__(7);
+var symbols = __webpack_require__(23);
+var utils = __webpack_require__(6);
 
 var makeSpan = buildCommon.makeSpan;
 var fontMap = buildCommon.fontMap;
@@ -87399,7 +87564,7 @@ module.exports = buildMathML;
 
 
 /***/ }),
-/* 417 */
+/* 413 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /**
@@ -87412,7 +87577,7 @@ module.exports = buildMathML;
  * domTree.js, creating namespaced DOM nodes and HTML text markup respectively.
  */
 
-var utils = __webpack_require__(251);
+var utils = __webpack_require__(6);
 
 /**
  * This node represents a general purpose MathML node of any type. The
@@ -87507,7 +87672,7 @@ module.exports = {
 
 
 /***/ }),
-/* 418 */
+/* 414 */
 /***/ (function(module, exports) {
 
 /**
@@ -87702,7 +87867,7 @@ module.exports = Options;
 
 
 /***/ }),
-/* 419 */
+/* 415 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /**
@@ -87710,7 +87875,7 @@ module.exports = Options;
  * TODO(emily): Remove this
  */
 
-var Parser = __webpack_require__(420);
+var Parser = __webpack_require__(416);
 
 /**
  * Parses an expression using a Parser, then returns the parsed result.
@@ -87725,18 +87890,18 @@ module.exports = parseTree;
 
 
 /***/ }),
-/* 420 */
+/* 416 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* eslint no-constant-condition:0 */
-var functions = __webpack_require__(421);
-var environments = __webpack_require__(422);
-var Lexer = __webpack_require__(423);
-var symbols = __webpack_require__(266);
-var utils = __webpack_require__(251);
+var functions = __webpack_require__(417);
+var environments = __webpack_require__(418);
+var Lexer = __webpack_require__(419);
+var symbols = __webpack_require__(23);
+var utils = __webpack_require__(6);
 
-var parseData = __webpack_require__(299);
-var ParseError = __webpack_require__(252);
+var parseData = __webpack_require__(190);
+var ParseError = __webpack_require__(7);
 
 /**
  * This file contains the parser used to parse out a TeX expression from the
@@ -88468,11 +88633,11 @@ module.exports = Parser;
 
 
 /***/ }),
-/* 421 */
+/* 417 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var utils = __webpack_require__(251);
-var ParseError = __webpack_require__(252);
+var utils = __webpack_require__(6);
+var ParseError = __webpack_require__(7);
 
 /* This file contains a list of functions that we parse, identified by
  * the calls to defineFunction.
@@ -89054,13 +89219,13 @@ defineFunction(["\\begin", "\\end"], {
 
 
 /***/ }),
-/* 422 */
+/* 418 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* eslint no-constant-condition:0 */
-var fontMetrics = __webpack_require__(257);
-var parseData = __webpack_require__(299);
-var ParseError = __webpack_require__(252);
+var fontMetrics = __webpack_require__(13);
+var parseData = __webpack_require__(190);
+var ParseError = __webpack_require__(7);
 
 var ParseNode = parseData.ParseNode;
 
@@ -89281,7 +89446,7 @@ defineEnvironment("aligned", {
 
 
 /***/ }),
-/* 423 */
+/* 419 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /**
@@ -89297,9 +89462,9 @@ defineEnvironment("aligned", {
  * kinds.
  */
 
-var matchAt = __webpack_require__(424);
+var matchAt = __webpack_require__(420);
 
-var ParseError = __webpack_require__(252);
+var ParseError = __webpack_require__(7);
 
 // The main lexer class
 function Lexer(input) {
@@ -89449,7 +89614,7 @@ module.exports = Lexer;
 
 
 /***/ }),
-/* 424 */
+/* 420 */
 /***/ (function(module, exports) {
 
 function getRelocatable(re) {
@@ -89492,7 +89657,7 @@ function matchAt(re, str, pos) {
 module.exports = matchAt;
 
 /***/ }),
-/* 425 */
+/* 421 */
 /***/ (function(module, exports) {
 
 // Markdown-it plugin to render GitHub-style task lists; see
@@ -89614,19 +89779,298 @@ function startsWithTodoMarkdown(token) {
 
 
 /***/ }),
-/* 426 */
+/* 422 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var render = function() {
+  var _vm = this
+  var _h = _vm.$createElement
+  var _c = _vm._self._c || _h
+  return _c(
+    "div",
+    { staticClass: "api-calling" },
+    [
+      _c("vue-markdown", { attrs: { emoji: true } }, [
+        _vm._v("this is the default slot `hey` :)")
+      ]),
+      _vm._v(" "),
+      _vm.errors.length
+        ? _c(
+            "div",
+            { staticClass: "error" },
+            [
+              _vm._l(_vm.errors, function(err) {
+                return _c("span", [_vm._v("\n\t\t\t" + _vm._s(err) + "\n\t\t")])
+              }),
+              _vm._v(" "),
+              _c("hr")
+            ],
+            2
+          )
+        : _vm._e(),
+      _vm._v(" "),
+      _c("div", { staticClass: "create-form" }, [
+        _c("div", { staticClass: "product-name-input form-group" }, [
+          _c("input", {
+            directives: [
+              {
+                name: "model",
+                rawName: "v-model",
+                value: _vm.product.name,
+                expression: "product.name"
+              }
+            ],
+            staticClass: "form-control",
+            attrs: { type: "text" },
+            domProps: { value: _vm.product.name },
+            on: {
+              input: function($event) {
+                if ($event.target.composing) {
+                  return
+                }
+                _vm.$set(_vm.product, "name", $event.target.value)
+              }
+            }
+          })
+        ]),
+        _vm._v(" "),
+        _c("div", { staticClass: "product-name-input form-group" }, [
+          _c("input", {
+            directives: [
+              {
+                name: "model",
+                rawName: "v-model.number",
+                value: _vm.product.price,
+                expression: "product.price",
+                modifiers: { number: true }
+              }
+            ],
+            staticClass: "form-control",
+            attrs: { type: "text" },
+            domProps: { value: _vm.product.price },
+            on: {
+              input: function($event) {
+                if ($event.target.composing) {
+                  return
+                }
+                _vm.$set(_vm.product, "price", _vm._n($event.target.value))
+              },
+              blur: function($event) {
+                _vm.$forceUpdate()
+              }
+            }
+          })
+        ]),
+        _vm._v(" "),
+        _c("div", { staticClass: "button-create form-group" }, [
+          _c(
+            "button",
+            {
+              staticClass: "btn btn-primary",
+              on: { click: _vm.createProduct }
+            },
+            [_vm._v("Create")]
+          )
+        ])
+      ]),
+      _vm._v(" "),
+      _c("hr"),
+      _vm._v(" "),
+      _c("div", { staticClass: "list-products" }, [
+        _c("h2", [_vm._v("LIST PRODUCT")]),
+        _vm._v(" "),
+        _c("div", { staticClass: "product-table" }, [
+          _c("table", { staticClass: "table table-bordered" }, [
+            _vm._m(0, false, false),
+            _vm._v(" "),
+            _c(
+              "tbody",
+              _vm._l(_vm.list_products, function(prod, index) {
+                return _c("tr", [
+                  _c("td", [_vm._v(_vm._s(prod.id))]),
+                  _vm._v(" "),
+                  !prod.isEdit
+                    ? _c("td", [
+                        _vm._v(
+                          "\n\t\t\t\t\t\t\t" +
+                            _vm._s(prod.name) +
+                            "\n\t\t\t\t\t\t"
+                        )
+                      ])
+                    : _c("td", [
+                        _c("input", {
+                          directives: [
+                            {
+                              name: "model",
+                              rawName: "v-model",
+                              value: prod.name,
+                              expression: "prod.name"
+                            }
+                          ],
+                          staticClass: "form-control",
+                          attrs: { type: "text" },
+                          domProps: { value: prod.name },
+                          on: {
+                            input: function($event) {
+                              if ($event.target.composing) {
+                                return
+                              }
+                              _vm.$set(prod, "name", $event.target.value)
+                            }
+                          }
+                        })
+                      ]),
+                  _vm._v(" "),
+                  !prod.isEdit
+                    ? _c("td", [
+                        _vm._v(
+                          "\n\t\t\t\t\t\t\t" +
+                            _vm._s(prod.price) +
+                            "\n\t\t\t\t\t\t"
+                        )
+                      ])
+                    : _c("td", [
+                        _c("input", {
+                          directives: [
+                            {
+                              name: "model",
+                              rawName: "v-model.number",
+                              value: prod.price,
+                              expression: "prod.price",
+                              modifiers: { number: true }
+                            }
+                          ],
+                          staticClass: "form-control",
+                          attrs: { type: "text" },
+                          domProps: { value: prod.price },
+                          on: {
+                            input: function($event) {
+                              if ($event.target.composing) {
+                                return
+                              }
+                              _vm.$set(
+                                prod,
+                                "price",
+                                _vm._n($event.target.value)
+                              )
+                            },
+                            blur: function($event) {
+                              _vm.$forceUpdate()
+                            }
+                          }
+                        })
+                      ]),
+                  _vm._v(" "),
+                  _c("td", [_vm._v(_vm._s(prod.created_at))]),
+                  _vm._v(" "),
+                  !prod.isEdit
+                    ? _c("td", [
+                        _c(
+                          "button",
+                          {
+                            staticClass: "btn btn-success",
+                            on: {
+                              click: function($event) {
+                                prod.isEdit = true
+                              }
+                            }
+                          },
+                          [_vm._v("Edit")]
+                        ),
+                        _vm._v(" "),
+                        _c(
+                          "button",
+                          {
+                            staticClass: "btn btn-danger",
+                            on: {
+                              click: function($event) {
+                                _vm.deleteProduct(prod, index)
+                              }
+                            }
+                          },
+                          [_vm._v("Delete")]
+                        )
+                      ])
+                    : _c("td", [
+                        _c(
+                          "button",
+                          {
+                            staticClass: "btn btn-primary",
+                            on: {
+                              click: function($event) {
+                                _vm.updateProduct(prod)
+                              }
+                            }
+                          },
+                          [_vm._v("Save")]
+                        ),
+                        _vm._v(" "),
+                        _c(
+                          "button",
+                          {
+                            staticClass: "btn btn-danger",
+                            on: {
+                              click: function($event) {
+                                prod.isEdit = false
+                              }
+                            }
+                          },
+                          [_vm._v("Cancel")]
+                        )
+                      ])
+                ])
+              })
+            )
+          ])
+        ])
+      ])
+    ],
+    1
+  )
+}
+var staticRenderFns = [
+  function() {
+    var _vm = this
+    var _h = _vm.$createElement
+    var _c = _vm._self._c || _h
+    return _c("thead", [
+      _c("tr", [
+        _c("th", [_vm._v("ID")]),
+        _vm._v(" "),
+        _c("th", [_vm._v("Name")]),
+        _vm._v(" "),
+        _c("th", [_vm._v("Price")]),
+        _vm._v(" "),
+        _c("th", [_vm._v("Date created")]),
+        _vm._v(" "),
+        _c("th")
+      ])
+    ])
+  }
+]
+render._withStripped = true
+module.exports = { render: render, staticRenderFns: staticRenderFns }
+if (false) {
+  module.hot.accept()
+  if (module.hot.data) {
+    require("vue-hot-reload-api")      .rerender("data-v-4ce99dc1", module.exports)
+  }
+}
+
+/***/ }),
+/* 423 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(427)
+  __webpack_require__(424)
 }
-var normalizeComponent = __webpack_require__(1)
+var normalizeComponent = __webpack_require__(3)
 /* script */
-var __vue_script__ = __webpack_require__(429)
+var __vue_script__ = __webpack_require__(426)
 /* template */
-var __vue_template__ = __webpack_require__(430)
+var __vue_template__ = __webpack_require__(429)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -89666,17 +90110,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 427 */
+/* 424 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(428);
+var content = __webpack_require__(425);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(3)("1e0e2265", content, false);
+var update = __webpack_require__(4)("1e0e2265", content, false);
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -89692,7 +90136,7 @@ if(false) {
 }
 
 /***/ }),
-/* 428 */
+/* 425 */
 /***/ (function(module, exports, __webpack_require__) {
 
 exports = module.exports = __webpack_require__(2)(undefined);
@@ -89706,13 +90150,15 @@ exports.push([module.i, "\n.separator[data-v-7befa14e] {\n  display: inline-bloc
 
 
 /***/ }),
-/* 429 */
+/* 426 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue_markdown__ = __webpack_require__(300);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue_markdown__ = __webpack_require__(168);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue_markdown___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_vue_markdown__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_codemirror_theme_base16_dark_css__ = __webpack_require__(427);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_codemirror_theme_base16_dark_css___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_codemirror_theme_base16_dark_css__);
 //
 //
 //
@@ -89758,6 +90204,9 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 //
 //
 //
+//
+//
+
 
 
 /* harmony default export */ __webpack_exports__["default"] = ({
@@ -89766,7 +90215,16 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 	},
 	data: function data() {
 		return {
-			input: ''
+			input: '',
+			code: 'const a = 10',
+			cmOptions: {
+				// codemirror options
+				tabSize: 4,
+				mode: 'text/javascript',
+				theme: 'base16-dark',
+				line: true
+				// more codemirror options, 更多 codemirror 的高级配置...
+			}
 		};
 	},
 
@@ -89778,12 +90236,60 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 	methods: {
 		update: _.debounce(function (e) {
 			this.input = e.target.value;
-		}, 300)
+		}, 300),
+		boldText: function boldText() {
+			this.input += '****';
+		}
 	}
 });
 
 /***/ }),
-/* 430 */
+/* 427 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// style-loader: Adds some css to the DOM by adding a <style> tag
+
+// load the styles
+var content = __webpack_require__(428);
+if(typeof content === 'string') content = [[module.i, content, '']];
+// Prepare cssTransformation
+var transform;
+
+var options = {}
+options.transform = transform
+// add the styles to the DOM
+var update = __webpack_require__(43)(content, options);
+if(content.locals) module.exports = content.locals;
+// Hot Module Replacement
+if(false) {
+	// When the styles change, update the <style> tags
+	if(!content.locals) {
+		module.hot.accept("!!../../css-loader/index.js!./base16-dark.css", function() {
+			var newContent = require("!!../../css-loader/index.js!./base16-dark.css");
+			if(typeof newContent === 'string') newContent = [[module.id, newContent, '']];
+			update(newContent);
+		});
+	}
+	// When the module is disposed, remove the <style> tags
+	module.hot.dispose(function() { update(); });
+}
+
+/***/ }),
+/* 428 */
+/***/ (function(module, exports, __webpack_require__) {
+
+exports = module.exports = __webpack_require__(2)(undefined);
+// imports
+
+
+// module
+exports.push([module.i, "/*\n\n    Name:       Base16 Default Dark\n    Author:     Chris Kempson (http://chriskempson.com)\n\n    CodeMirror template by Jan T. Sott (https://github.com/idleberg/base16-codemirror)\n    Original Base16 color scheme by Chris Kempson (https://github.com/chriskempson/base16)\n\n*/\n\n.cm-s-base16-dark.CodeMirror { background: #151515; color: #e0e0e0; }\n.cm-s-base16-dark div.CodeMirror-selected { background: #303030; }\n.cm-s-base16-dark .CodeMirror-line::selection, .cm-s-base16-dark .CodeMirror-line > span::selection, .cm-s-base16-dark .CodeMirror-line > span > span::selection { background: rgba(48, 48, 48, .99); }\n.cm-s-base16-dark .CodeMirror-line::-moz-selection, .cm-s-base16-dark .CodeMirror-line > span::-moz-selection, .cm-s-base16-dark .CodeMirror-line > span > span::-moz-selection { background: rgba(48, 48, 48, .99); }\n.cm-s-base16-dark .CodeMirror-gutters { background: #151515; border-right: 0px; }\n.cm-s-base16-dark .CodeMirror-guttermarker { color: #ac4142; }\n.cm-s-base16-dark .CodeMirror-guttermarker-subtle { color: #505050; }\n.cm-s-base16-dark .CodeMirror-linenumber { color: #505050; }\n.cm-s-base16-dark .CodeMirror-cursor { border-left: 1px solid #b0b0b0; }\n\n.cm-s-base16-dark span.cm-comment { color: #8f5536; }\n.cm-s-base16-dark span.cm-atom { color: #aa759f; }\n.cm-s-base16-dark span.cm-number { color: #aa759f; }\n\n.cm-s-base16-dark span.cm-property, .cm-s-base16-dark span.cm-attribute { color: #90a959; }\n.cm-s-base16-dark span.cm-keyword { color: #ac4142; }\n.cm-s-base16-dark span.cm-string { color: #f4bf75; }\n\n.cm-s-base16-dark span.cm-variable { color: #90a959; }\n.cm-s-base16-dark span.cm-variable-2 { color: #6a9fb5; }\n.cm-s-base16-dark span.cm-def { color: #d28445; }\n.cm-s-base16-dark span.cm-bracket { color: #e0e0e0; }\n.cm-s-base16-dark span.cm-tag { color: #ac4142; }\n.cm-s-base16-dark span.cm-link { color: #aa759f; }\n.cm-s-base16-dark span.cm-error { background: #ac4142; color: #b0b0b0; }\n\n.cm-s-base16-dark .CodeMirror-activeline-background { background: #202020; }\n.cm-s-base16-dark .CodeMirror-matchingbracket { text-decoration: underline; color: white !important; }\n", ""]);
+
+// exports
+
+
+/***/ }),
+/* 429 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -89791,40 +90297,9 @@ var render = function() {
   var _h = _vm.$createElement
   var _c = _vm._self._c || _h
   return _c("div", { staticClass: "my-blog container full-height" }, [
-    _vm._m(0, false, false),
-    _vm._v(" "),
-    _c("div", { staticClass: "row full-height markdown" }, [
-      _c("div", { staticClass: "col-md-6 area-input full-height" }, [
-        _c("div", { staticClass: "form-group" }, [
-          _c("textarea", {
-            staticClass: "syncscroll form-control full-height",
-            attrs: { name: "myscroll1" },
-            domProps: { value: _vm.input },
-            on: { input: _vm.update }
-          })
-        ])
-      ]),
-      _vm._v(" "),
-      _c(
-        "div",
-        {
-          staticClass: "col-md-6 preview full-height syncscroll",
-          attrs: { name: "myscroll1" }
-        },
-        [_c("VueMarkdown", { attrs: { source: _vm.input } })],
-        1
-      )
-    ])
-  ])
-}
-var staticRenderFns = [
-  function() {
-    var _vm = this
-    var _h = _vm.$createElement
-    var _c = _vm._self._c || _h
-    return _c("div", { staticClass: "row editor-toolbar" }, [
+    _c("div", { staticClass: "row editor-toolbar" }, [
       _c("div", { staticClass: "col-md-12" }, [
-        _c("a", { staticClass: "fa fa-bold" }),
+        _c("a", { staticClass: "fa fa-bold", on: { click: _vm.boldText } }),
         _vm._v(" "),
         _c("a", {
           staticClass: "fa fa-italic",
@@ -89933,9 +90408,43 @@ var staticRenderFns = [
           attrs: { title: "Markdown Help" }
         })
       ])
+    ]),
+    _vm._v(" "),
+    _c("div", { staticClass: "row full-height markdown" }, [
+      _c("div", { staticClass: "col-md-6 area-input full-height" }, [
+        _c(
+          "div",
+          { staticClass: "form-group" },
+          [
+            _c("codemirror", {
+              staticClass: "syncscroll",
+              attrs: { options: _vm.cmOptions },
+              model: {
+                value: _vm.input,
+                callback: function($$v) {
+                  _vm.input = $$v
+                },
+                expression: "input"
+              }
+            })
+          ],
+          1
+        )
+      ]),
+      _vm._v(" "),
+      _c(
+        "div",
+        {
+          staticClass: "col-md-6 preview full-height syncscroll",
+          attrs: { name: "myscroll1" }
+        },
+        [_c("VueMarkdown", { attrs: { source: _vm.input } })],
+        1
+      )
     ])
-  }
-]
+  ])
+}
+var staticRenderFns = []
 render._withStripped = true
 module.exports = { render: render, staticRenderFns: staticRenderFns }
 if (false) {
@@ -89944,6 +90453,561 @@ if (false) {
     require("vue-hot-reload-api")      .rerender("data-v-7befa14e", module.exports)
   }
 }
+
+/***/ }),
+/* 430 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var disposed = false
+function injectStyle (ssrContext) {
+  if (disposed) return
+  __webpack_require__(442)
+}
+var normalizeComponent = __webpack_require__(3)
+/* script */
+var __vue_script__ = __webpack_require__(433)
+/* template */
+var __vue_template__ = __webpack_require__(434)
+/* template functional */
+var __vue_template_functional__ = false
+/* styles */
+var __vue_styles__ = injectStyle
+/* scopeId */
+var __vue_scopeId__ = "data-v-4cd6a1fc"
+/* moduleIdentifier (server only) */
+var __vue_module_identifier__ = null
+var Component = normalizeComponent(
+  __vue_script__,
+  __vue_template__,
+  __vue_template_functional__,
+  __vue_styles__,
+  __vue_scopeId__,
+  __vue_module_identifier__
+)
+Component.options.__file = "resources/assets/js/components/User.vue"
+if (Component.esModule && Object.keys(Component.esModule).some(function (key) {  return key !== "default" && key.substr(0, 2) !== "__"})) {  console.error("named exports are not supported in *.vue files.")}
+
+/* hot reload */
+if (false) {(function () {
+  var hotAPI = require("vue-hot-reload-api")
+  hotAPI.install(require("vue"), false)
+  if (!hotAPI.compatible) return
+  module.hot.accept()
+  if (!module.hot.data) {
+    hotAPI.createRecord("data-v-4cd6a1fc", Component.options)
+  } else {
+    hotAPI.reload("data-v-4cd6a1fc", Component.options)
+' + '  }
+  module.hot.dispose(function (data) {
+    disposed = true
+  })
+})()}
+
+module.exports = Component.exports
+
+
+/***/ }),
+/* 431 */,
+/* 432 */,
+/* 433 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+
+/* harmony default export */ __webpack_exports__["default"] = ({
+	data: function data() {
+		return {
+			userCreate: {
+				name: '',
+				email: '',
+				role: 'employee'
+			},
+			currentUser: {},
+			list_users: []
+		};
+	},
+	created: function created() {
+		this.getCurrentUser();
+		this.getListUsers();
+	},
+
+	methods: {
+		getCurrentUser: function getCurrentUser() {
+			var _this = this;
+
+			axios.get('/getCurrentUser').then(function (response) {
+				_this.currentUser = response.data;
+			}).catch(function (error) {
+				console.log(error);
+			});
+		},
+		getListUsers: function getListUsers() {
+			var _this2 = this;
+
+			this.$http.get('/users').then(function (response) {
+				_this2.list_users = response.body;
+				_this2.list_users.forEach(function (user) {
+					Vue.set(user, 'isEdit', false);
+				});
+			}, function (error) {
+				console.log(error);
+			});
+		},
+		createUser: function createUser() {
+			var _this3 = this;
+
+			axios.post('/users', { user: this.userCreate }).then(function (response) {
+				console.log(response);
+				_this3.userCreate = {};
+				_this3.getListUsers();
+			}).catch(function (error) {
+				console.log(error);
+			});
+		}
+	},
+	computed: {
+		checkIsAdmin: function checkIsAdmin() {
+			if (this.currentUser.roles) {
+				var check = false;
+				this.currentUser.roles.forEach(function (role) {
+					if (role.name === 'admin') {
+						check = true;
+					}
+				});
+				return check;
+			}
+		}
+	}
+});
+
+/***/ }),
+/* 434 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var render = function() {
+  var _vm = this
+  var _h = _vm.$createElement
+  var _c = _vm._self._c || _h
+  return _c("div", { staticClass: "user-management" }, [
+    _c("nav", { staticClass: "navbar navbar-default navbar-static-top" }, [
+      _c("div", { staticClass: "container" }, [
+        _vm._m(0, false, false),
+        _vm._v(" "),
+        _c(
+          "div",
+          {
+            staticClass: "collapse navbar-collapse",
+            attrs: { id: "app-navbar-collapse" }
+          },
+          [
+            _c("ul", { staticClass: "nav navbar-nav" }, [
+              _vm._v("\n                         \n                    ")
+            ]),
+            _vm._v(" "),
+            _c("ul", { staticClass: "nav navbar-nav navbar-right" }, [
+              _c("li", { staticClass: "dropdown" }, [
+                _c(
+                  "a",
+                  {
+                    staticClass: "dropdown-toggle",
+                    attrs: {
+                      href: "#",
+                      "data-toggle": "dropdown",
+                      role: "button",
+                      "aria-expanded": "false",
+                      "aria-haspopup": "true"
+                    }
+                  },
+                  [
+                    _vm._v(
+                      "\n                                " +
+                        _vm._s(_vm.currentUser.name) +
+                        " "
+                    ),
+                    _c("span", { staticClass: "caret" })
+                  ]
+                ),
+                _vm._v(" "),
+                _vm._m(1, false, false)
+              ])
+            ])
+          ]
+        )
+      ])
+    ]),
+    _vm._v(" "),
+    _vm.checkIsAdmin
+      ? _c("div", { staticClass: "create-user container" }, [
+          _c("div", { staticClass: "row" }, [
+            _c("div", { staticClass: "col-md-3" }, [
+              _c("input", {
+                directives: [
+                  {
+                    name: "model",
+                    rawName: "v-model",
+                    value: _vm.userCreate.name,
+                    expression: "userCreate.name"
+                  }
+                ],
+                staticClass: "form-control",
+                attrs: { type: "text", placeholder: "Name..." },
+                domProps: { value: _vm.userCreate.name },
+                on: {
+                  input: function($event) {
+                    if ($event.target.composing) {
+                      return
+                    }
+                    _vm.$set(_vm.userCreate, "name", $event.target.value)
+                  }
+                }
+              })
+            ]),
+            _vm._v(" "),
+            _c("div", { staticClass: "col-md-3" }, [
+              _c("input", {
+                directives: [
+                  {
+                    name: "model",
+                    rawName: "v-model",
+                    value: _vm.userCreate.email,
+                    expression: "userCreate.email"
+                  }
+                ],
+                staticClass: "form-control",
+                attrs: { type: "email", placeholder: "User email..." },
+                domProps: { value: _vm.userCreate.email },
+                on: {
+                  input: function($event) {
+                    if ($event.target.composing) {
+                      return
+                    }
+                    _vm.$set(_vm.userCreate, "email", $event.target.value)
+                  }
+                }
+              })
+            ]),
+            _vm._v(" "),
+            _c("div", { staticClass: "col-md-3" }, [
+              _c(
+                "select",
+                {
+                  directives: [
+                    {
+                      name: "model",
+                      rawName: "v-model",
+                      value: _vm.userCreate.role,
+                      expression: "userCreate.role"
+                    }
+                  ],
+                  staticClass: "form-control",
+                  on: {
+                    change: function($event) {
+                      var $$selectedVal = Array.prototype.filter
+                        .call($event.target.options, function(o) {
+                          return o.selected
+                        })
+                        .map(function(o) {
+                          var val = "_value" in o ? o._value : o.value
+                          return val
+                        })
+                      _vm.$set(
+                        _vm.userCreate,
+                        "role",
+                        $event.target.multiple
+                          ? $$selectedVal
+                          : $$selectedVal[0]
+                      )
+                    }
+                  }
+                },
+                [
+                  _c("option", { attrs: { value: "employee" } }, [
+                    _vm._v("Employee")
+                  ]),
+                  _vm._v(" "),
+                  _c("option", { attrs: { value: "saler" } }, [
+                    _vm._v("Saler")
+                  ]),
+                  _vm._v(" "),
+                  _c("option", { attrs: { value: "admin" } }, [_vm._v("Admin")])
+                ]
+              )
+            ]),
+            _vm._v(" "),
+            _c("div", { staticClass: "col-md-3" }, [
+              _c(
+                "button",
+                {
+                  staticClass: "btn btn-primary",
+                  on: { click: _vm.createUser }
+                },
+                [_vm._v("Create")]
+              )
+            ])
+          ])
+        ])
+      : _vm._e(),
+    _vm._v(" "),
+    _c("div", { staticClass: "list_user table-responsive container" }, [
+      _c("table", { staticClass: "table table-hover" }, [
+        _c("thead", [
+          _c("tr", [
+            _c("td", [_vm._v("ID")]),
+            _vm._v(" "),
+            _c("td", [_vm._v("Name")]),
+            _vm._v(" "),
+            _c("td", [_vm._v("Email")]),
+            _vm._v(" "),
+            _c("td", [_vm._v("Role")]),
+            _vm._v(" "),
+            _vm.checkIsAdmin ? _c("td", [_vm._v("Action")]) : _vm._e()
+          ])
+        ]),
+        _vm._v(" "),
+        _vm.list_users.length
+          ? _c(
+              "tbody",
+              _vm._l(_vm.list_users, function(user) {
+                return _c("tr", [
+                  _c("td", [_vm._v(_vm._s(user.id))]),
+                  _vm._v(" "),
+                  _c("td", [_vm._v(_vm._s(user.name))]),
+                  _vm._v(" "),
+                  _c("td", [_vm._v(_vm._s(user.email))]),
+                  _vm._v(" "),
+                  _c(
+                    "td",
+                    _vm._l(user.roles, function(role) {
+                      return _c("span", [
+                        _vm._v(
+                          "\n        \t\t\t\t\t\t" +
+                            _vm._s(role.name) +
+                            ",\n        \t\t\t\t\t"
+                        )
+                      ])
+                    })
+                  ),
+                  _vm._v(" "),
+                  _vm.checkIsAdmin
+                    ? _c("td", [
+                        _c("button", { staticClass: "btn btn-success" }, [
+                          _vm._v(
+                            "\n        \t\t\t\t\t\tEdit\n        \t\t\t\t\t"
+                          )
+                        ]),
+                        _vm._v(" "),
+                        _c("button", { staticClass: "btn btn-danger" }, [
+                          _vm._v("Delete")
+                        ])
+                      ])
+                    : _vm._e()
+                ])
+              })
+            )
+          : _vm._e()
+      ])
+    ])
+  ])
+}
+var staticRenderFns = [
+  function() {
+    var _vm = this
+    var _h = _vm.$createElement
+    var _c = _vm._self._c || _h
+    return _c("div", { staticClass: "navbar-header" }, [
+      _c(
+        "button",
+        {
+          staticClass: "navbar-toggle collapsed",
+          attrs: {
+            type: "button",
+            "data-toggle": "collapse",
+            "data-target": "#app-navbar-collapse",
+            "aria-expanded": "false"
+          }
+        },
+        [
+          _c("span", { staticClass: "sr-only" }, [_vm._v("Toggle Navigation")]),
+          _vm._v(" "),
+          _c("span", { staticClass: "icon-bar" }),
+          _vm._v(" "),
+          _c("span", { staticClass: "icon-bar" }),
+          _vm._v(" "),
+          _c("span", { staticClass: "icon-bar" })
+        ]
+      ),
+      _vm._v(" "),
+      _c("a", { staticClass: "navbar-brand", attrs: { href: "/" } }, [
+        _vm._v("\n                        Laravel\n                    ")
+      ])
+    ])
+  },
+  function() {
+    var _vm = this
+    var _h = _vm.$createElement
+    var _c = _vm._self._c || _h
+    return _c("ul", { staticClass: "dropdown-menu" }, [
+      _c("li", [_c("a", { attrs: { href: "/logout" } }, [_vm._v("Logout")])])
+    ])
+  }
+]
+render._withStripped = true
+module.exports = { render: render, staticRenderFns: staticRenderFns }
+if (false) {
+  module.hot.accept()
+  if (module.hot.data) {
+    require("vue-hot-reload-api")      .rerender("data-v-4cd6a1fc", module.exports)
+  }
+}
+
+/***/ }),
+/* 435 */
+/***/ (function(module, exports) {
+
+// removed by extract-text-webpack-plugin
+
+/***/ }),
+/* 436 */,
+/* 437 */,
+/* 438 */,
+/* 439 */,
+/* 440 */,
+/* 441 */,
+/* 442 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// style-loader: Adds some css to the DOM by adding a <style> tag
+
+// load the styles
+var content = __webpack_require__(443);
+if(typeof content === 'string') content = [[module.i, content, '']];
+if(content.locals) module.exports = content.locals;
+// add the styles to the DOM
+var update = __webpack_require__(4)("3bcfe99b", content, false);
+// Hot Module Replacement
+if(false) {
+ // When the styles change, update the <style> tags
+ if(!content.locals) {
+   module.hot.accept("!!../../../../node_modules/css-loader/index.js!../../../../node_modules/vue-loader/lib/style-compiler/index.js?{\"vue\":true,\"id\":\"data-v-4cd6a1fc\",\"scoped\":true,\"hasInlineConfig\":true}!../../../../node_modules/sass-loader/lib/loader.js!../../../../node_modules/vue-loader/lib/selector.js?type=styles&index=0&bustCache!./User.vue", function() {
+     var newContent = require("!!../../../../node_modules/css-loader/index.js!../../../../node_modules/vue-loader/lib/style-compiler/index.js?{\"vue\":true,\"id\":\"data-v-4cd6a1fc\",\"scoped\":true,\"hasInlineConfig\":true}!../../../../node_modules/sass-loader/lib/loader.js!../../../../node_modules/vue-loader/lib/selector.js?type=styles&index=0&bustCache!./User.vue");
+     if(typeof newContent === 'string') newContent = [[module.id, newContent, '']];
+     update(newContent);
+   });
+ }
+ // When the module is disposed, remove the <style> tags
+ module.hot.dispose(function() { update(); });
+}
+
+/***/ }),
+/* 443 */
+/***/ (function(module, exports, __webpack_require__) {
+
+exports = module.exports = __webpack_require__(2)(undefined);
+// imports
+
+
+// module
+exports.push([module.i, "", ""]);
+
+// exports
+
 
 /***/ })
 /******/ ]);

@@ -1,8 +1,9 @@
 <template>
 	<div class="my-blog container full-height">
+		
 		<div class="row editor-toolbar">
 			<div class="col-md-12">
-				<a class="fa fa-bold"></a>
+				<a class="fa fa-bold" @click="boldText"></a>
 				<a title="Italic (Cmd-I)" class="fa fa-italic"></a>
 				<a title="Strikethrough" class="fa fa-strikethrough"></a>
 				<a title="Big Heading" class="fa fa-header fa-header-x fa-header-1 active"></a>
@@ -33,7 +34,8 @@
 		<div class="row full-height markdown">
 			<div class="col-md-6 area-input full-height">
 				<div class="form-group">
-					<textarea :value="input" @input="update" class="syncscroll form-control full-height" name="myscroll1"></textarea>
+					<!-- <textarea :value="input" @input="update" class="syncscroll form-control full-height" name="myscroll1"></textarea> -->
+					<codemirror v-model="input" :options="cmOptions" class="syncscroll"></codemirror>
 				</div>
 			</div>
 			<div class="col-md-6 preview full-height syncscroll" name="myscroll1">
@@ -45,13 +47,23 @@
 
 <script>
 	import VueMarkdown from 'vue-markdown'
+	import 'codemirror/theme/base16-dark.css'
 	export default {
 		components: {
 			VueMarkdown
 		},
 		data() {
 			return {
-				input: ''
+				input: '',
+				code: 'const a = 10',
+				cmOptions: {
+        // codemirror options
+        tabSize: 4,
+        mode: 'text/javascript',
+        theme: 'base16-dark',
+        line: true,
+        // more codemirror options, 更多 codemirror 的高级配置...
+      }
 			}
 		},
 		computed: {
@@ -62,7 +74,10 @@
 		methods: {
 		    update: _.debounce(function (e) {
 		      this.input = e.target.value
-		    }, 300)
+		    }, 300),
+		    boldText() {
+		    	this.input += '****'
+		    }
 		}
 	}
 </script>

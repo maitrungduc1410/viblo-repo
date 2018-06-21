@@ -16,6 +16,7 @@
         "jquery": "^3.1.1",
         "laravel-mix": "^1.0",
         "lodash": "^4.17.4",
+        "sw-precache-webpack-plugin": "^0.11.5",
         "vue": "^2.1.10"
     },
     "dependencies": {
@@ -25,6 +26,7 @@
         "push.js": "^1.0.5",
         "pusher-js": "^4.2.2",
         "socket.io-client": "^2.1.0",
+        "vue-codemirror": "^4.0.5",
         "vue-content-placeholders": "^0.2.1",
         "vue-echo": "^1.0.1",
         "vue-markdown": "^2.2.4",

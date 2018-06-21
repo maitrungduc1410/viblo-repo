@@ -14,7 +14,17 @@ use App\Events\MessagePosted;
 
 Route::get('/', function () {
     return view('welcome');
+})->middleware('auth');
+
+Route::get('/home', 'HomeController@index')->name('home');
+
+Route::resource('users', 'UserController');
+
+Route::get('/getCurrentUser', function() {
+    return Auth::user()->load('roles');
 });
+
+Route::match(['get', 'post'], '/logout', 'Auth\LoginController@logout')->name('logout');
 
 Route::get('/chat', function() {
 	return view('chat');
@@ -42,7 +52,7 @@ Route::get('/getUserLogin', function() {
 
 Auth::routes();
 
-Route::get('/home', 'HomeController@index')->name('home');
+
 
 Route::get('grape', function() {
 	return view('grape');
