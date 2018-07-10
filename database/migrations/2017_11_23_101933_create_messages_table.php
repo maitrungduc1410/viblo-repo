@@ -17,6 +17,7 @@ class CreateMessagesTable extends Migration
             $table->increments('id');
             $table->text('message');
             $table->integer('user_id')->unsigned();
+            $table->integer('chatroom_id')->unsigned();
             $table->timestamps();
         });
     }
