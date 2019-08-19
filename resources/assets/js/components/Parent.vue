@@ -15,11 +15,14 @@
 	export default {
 		components: {
 			Child
-		}
+        },
+        mounted () {
+            console.log(this.$style)
+        }
 	}
 </script>
 
-<style lang="scss" scoped module>
+<style lang="scss" module>
 .welcome_text {
 	color: red;
 	.text {

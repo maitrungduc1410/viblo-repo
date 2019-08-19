@@ -8,7 +8,7 @@
     </head>
     <body>
         <div id="app">
-            <User></User>
+            <user></user>
         </div>
         <script src="/js/app.js"></script>
     </body>

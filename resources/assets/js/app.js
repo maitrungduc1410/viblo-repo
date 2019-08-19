@@ -19,16 +19,16 @@ import router from './router/routes'
  * or customize the JavaScript scaffolding to fit your unique needs.
  */
 
-Vue.component('example', require('./components/Example.vue'));
-Vue.component('my-component', require('./components/MyComponent.vue'));
-Vue.component('chat-layout', require('./components/ChatLayout.vue'));
-Vue.component('user-dashboard', require('./components/UserDashboard.vue'));
-Vue.component('life-cycle', require('./components/LifeCycle.vue'));
-Vue.component('binding-html', require('./components/BindingHTML.vue'));
-Vue.component('event-handling', require('./components/EventHandling.vue'));
-Vue.component('parent', require('./components/Parent.vue'));
-Vue.component('api-calling', require('./components/ApiCalling.vue'));
-Vue.component('blog', require('./components/Blog.vue'));
+// Vue.component('example', require('./components/Example.vue'));
+// Vue.component('my-component', require('./components/MyComponent.vue'));
+// Vue.component('chat-layout', require('./components/ChatLayout.vue'));
+// Vue.component('user-dashboard', require('./components/UserDashboard.vue'));
+// Vue.component('life-cycle', require('./components/LifeCycle.vue'));
+// Vue.component('binding-html', require('./components/BindingHTML.vue'));
+// Vue.component('event-handling', require('./components/EventHandling.vue'));
+// Vue.component('parent', require('./components/Parent.vue'));
+// Vue.component('api-calling', require('./components/ApiCalling.vue'));
+// Vue.component('blog', require('./components/Blog.vue'));
 Vue.component('User', require('./components/User.vue'));
 
 const app = new Vue({

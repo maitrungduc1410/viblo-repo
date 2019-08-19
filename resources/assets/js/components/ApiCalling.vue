@@ -2,7 +2,7 @@
 	<div class="api-calling">
 		<vue-markdown :emoji="true">this is the default slot `hey` :)</vue-markdown>
 		<div class="error" v-if="errors.length">
-			<span v-for="err in errors">
+			<span v-for="(err, index) in errors" :key="index"> 
 				{{ err }}
 			</span>
 			<hr>
