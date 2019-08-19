@@ -29,7 +29,7 @@ import router from './router/routes'
 // Vue.component('parent', require('./components/Parent.vue'));
 // Vue.component('api-calling', require('./components/ApiCalling.vue'));
 // Vue.component('blog', require('./components/Blog.vue'));
-Vue.component('User', require('./components/User.vue'));
+Vue.component('User', require('./components/User.vue').default);
 
 const app = new Vue({
     el: '#app',
